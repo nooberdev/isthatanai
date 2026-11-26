@@ -2,6 +2,8 @@
 	import type {
 		ClickSample,
 		CollectorStats,
+		InputSample,
+		KeySample,
 		MouseFeatures,
 		PointerSample,
 		ScrollSample,
@@ -13,6 +15,7 @@
 	// Forma estructural de las señales (una por señal, null sin evidencia).
 	interface SignalScores {
 		mouse: number | null;
+		keyboard: number | null;
 		click: number | null;
 		scroll: number | null;
 	}
@@ -27,6 +30,8 @@
 		getSignalScores,
 		getRecentClicks,
 		getRecentScrolls,
+		getRecentKeys,
+		getRecentInputs,
 		forced = false
 	}: {
 		currentState: VerdictState;
@@ -38,6 +43,8 @@
 		getSignalScores: () => SignalScores;
 		getRecentClicks: (sinceSeq?: number) => ClickSample[];
 		getRecentScrolls: (sinceSeq?: number) => ScrollSample[];
+		getRecentKeys: (sinceSeq?: number) => KeySample[];
+		getRecentInputs: (sinceSeq?: number) => InputSample[];
 		forced?: boolean;
 	} = $props();
 
@@ -124,6 +131,14 @@
 						<dd>{stats?.scrollCount ?? 0}</dd>
 					</div>
 					<div class="dev-panel__row">
+						<dt>Teclas</dt>
+						<dd>{stats?.keyCount ?? 0}</dd>
+					</div>
+					<div class="dev-panel__row">
+						<dt>Inputs</dt>
+						<dd>{stats?.inputCount ?? 0}</dd>
+					</div>
+					<div class="dev-panel__row">
 						<dt>Eventos/s</dt>
 						<dd>{(stats?.eventsPerSecond ?? 0).toFixed(1)}</dd>
 					</div>
@@ -175,6 +190,10 @@
 							<dd>{signalScores && signalScores.mouse !== null ? signalScores.mouse.toFixed(2) : "—"}</dd>
 						</div>
 						<div class="dev-panel__row">
+							<dt>Teclado</dt>
+							<dd>{signalScores && signalScores.keyboard !== null ? signalScores.keyboard.toFixed(2) : "—"}</dd>
+						</div>
+						<div class="dev-panel__row">
 							<dt>Clic</dt>
 							<dd>{signalScores && signalScores.click !== null ? signalScores.click.toFixed(2) : "—"}</dd>
 						</div>
@@ -192,6 +211,8 @@
 				getSignalScores={getSignalScores}
 				getRecentClicks={getRecentClicks}
 				getRecentScrolls={getRecentScrolls}
+				getRecentKeys={getRecentKeys}
+				getRecentInputs={getRecentInputs}
 			/>
 		<div class="dev-panel__actions">
 				<button type="button" class="dev-panel__btn" onclick={() => setState("midiendo")}>midiendo</button>

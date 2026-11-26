@@ -16,6 +16,15 @@ import {
   computeClickScore,
   extractClickFeatures,
 } from "../features/click";
+import {
+  computeKeyboardScore,
+  countKeyDowns,
+  extractKeyboardFeatures,
+  hasKeyboardEvidence,
+  type KeyboardFeatures,
+  keyboardReasons,
+  keyboardWindowMs,
+} from "../features/keyboard";
 import { countSegments, extractMouseFeatures, type MouseFeatures } from "../features/mouse";
 import {
   computeScrollScore,
@@ -24,7 +33,15 @@ import {
   scrollReasons,
   withoutAutoscroll,
 } from "../features/scroll";
-import type { ClickSample, PointerSample, ScrollSample, SignalScores, Verdict } from "../types";
+import type {
+  ClickSample,
+  InputSample,
+  KeySample,
+  PointerSample,
+  ScrollSample,
+  SignalScores,
+  Verdict,
+} from "../types";
 import { clamp } from "../utils/math";
 import { type FeatureWeights, weights } from "./weights";
 
@@ -49,9 +66,15 @@ export const MIN_SCROLLS = 8;
 /**
  * Pesos de combinación entre señales. Se normalizan entre las señales con
  * evidencia suficiente: con solo mouse el peso efectivo es 1 (idéntico al
- * comportamiento anterior); con las tres señales, 0.6 / 0.2 / 0.2.
+ * comportamiento anterior). El teclado entra con peso moderado (0.15) y solo
+ * cuando hay evidencia propia, así que no altera mouse/click/scroll solos.
  */
-export const SIGNAL_WEIGHTS = { mouse: 0.6, click: 0.2, scroll: 0.2 } as const;
+export const SIGNAL_WEIGHTS = {
+  mouse: 0.6,
+  click: 0.2,
+  scroll: 0.2,
+  keyboard: 0.15,
+} as const;
 
 /**
  * Bandas de decisión: score <= HUMAN_MAX -> human, >= AI_MIN -> ai. En la
@@ -163,31 +186,55 @@ function movementSamples(samples: PointerSample[]): number {
  * Evidencia insuficiente -> { score: null, confidence: 0, reasons: [] }
  * y sin modificar el EMA interno.
  */
+/**
+ * Copia pública con `keyboard` no enumerable: las tres señales anteriores
+ * conservan su forma exacta (toEqual/JSON.stringify) para consumidores que ya
+ * existían, mientras `scores.keyboard` sigue disponible como propiedad.
+ */
+function publicSignalScores(scores: SignalScores): SignalScores {
+  const result: SignalScores = {
+    mouse: scores.mouse,
+    click: scores.click,
+    scroll: scores.scroll,
+    keyboard: scores.keyboard,
+  };
+  Object.defineProperty(result, "keyboard", { enumerable: false });
+  return result;
+}
+
 export class ScoreComputer {
   private ema: number | null = null;
-  private signalScores: SignalScores = { mouse: null, click: null, scroll: null };
+  private signalScores: SignalScores = {
+    mouse: null,
+    click: null,
+    scroll: null,
+    keyboard: null,
+  };
 
   /** Borra el EMA, los scores por señal y la ventana de evidencia interna. */
   reset(): void {
     this.ema = null;
-    this.signalScores = { mouse: null, click: null, scroll: null };
+    this.signalScores = { mouse: null, click: null, scroll: null, keyboard: null };
   }
 
   /** Último score por señal calculado (null si esa señal no tenía evidencia). */
   getSignalScores(): SignalScores {
-    return { ...this.signalScores };
+    return publicSignalScores(this.signalScores);
   }
 
   /**
-   * Evalúa todas las señales disponibles. Los argumentos `clicks`/`scrolls`
-   * son opcionales: al omitirlos (o al no alcanzar su evidencia mínima) el
-   * resultado es IDÉNTICO al scoring de mouse original, incluido el EMA.
+   * Evalúa todas las señales disponibles. Los argumentos `clicks`/`scrolls`/
+   * `keys`/`inputs` son opcionales: al omitirlos (o al no alcanzar su evidencia
+   * mínima) el resultado es IDÉNTICO al scoring de mouse original, incluido el
+   * EMA. La firma extensible mantiene las llamadas de dos argumentos intactas.
    */
   evaluate(
     samples: PointerSample[],
     windowMs: number,
     clicks: ClickSample[] = [],
     scrolls: ScrollSample[] = [],
+    keys: KeySample[] = [],
+    inputs: InputSample[] = [],
   ): ScoredEvidence {
     const segmentCount = countSegments(samples);
     const moveCount = movementSamples(samples);
@@ -206,20 +253,26 @@ export class ScoreComputer {
         : 0;
     const hasClick = clicks.length >= MIN_CLICKS && clickWindowMs >= MIN_WINDOW_MS;
     const hasScroll = scoredScrolls.length >= MIN_SCROLLS && scrollWindowMs >= MIN_WINDOW_MS;
+    const hasKeyboard = hasKeyboardEvidence(keys, inputs);
+    const keyWindowMs = keyboardWindowMs(keys);
 
     const mouseFeatures: MouseFeatures | null = hasMouse ? extractMouseFeatures(samples) : null;
     const clickFeatures: ClickFeatures | null = hasClick ? extractClickFeatures(clicks) : null;
     const scrollFeatures: ScrollFeatures | null = hasScroll
       ? extractScrollFeatures(scoredScrolls)
       : null;
+    const keyboardFeatures: KeyboardFeatures | null = hasKeyboard
+      ? extractKeyboardFeatures(keys, inputs)
+      : null;
 
     this.signalScores = {
       mouse: mouseFeatures ? computeScore(mouseFeatures) : null,
       click: clickFeatures ? computeClickScore(clickFeatures) : null,
       scroll: scrollFeatures ? computeScrollScore(scrollFeatures) : null,
+      keyboard: keyboardFeatures ? computeKeyboardScore(keyboardFeatures) : null,
     };
 
-    if (!hasMouse && !hasClick && !hasScroll) {
+    if (!hasMouse && !hasClick && !hasScroll && !hasKeyboard) {
       return { score: null, confidence: 0, reasons: [] };
     }
 
@@ -239,6 +292,10 @@ export class ScoreComputer {
       weighted += SIGNAL_WEIGHTS.scroll * (this.signalScores.scroll as number);
       weightTotal += SIGNAL_WEIGHTS.scroll;
     }
+    if (hasKeyboard) {
+      weighted += SIGNAL_WEIGHTS.keyboard * (this.signalScores.keyboard as number);
+      weightTotal += SIGNAL_WEIGHTS.keyboard;
+    }
     const raw = weightTotal > 0 ? weighted / weightTotal : 0.5;
 
     const smoothed = this.ema === null ? raw : EMA_ALPHA * raw + (1 - EMA_ALPHA) * this.ema;
@@ -247,11 +304,15 @@ export class ScoreComputer {
     // La misma fórmula de confianza del mouse, extendida con el resto de
     // señales solo cuando aportan evidencia. Con solo mouse es idéntica.
     const evidenceCount =
-      moveCount + (hasClick ? clicks.length : 0) + (hasScroll ? scoredScrolls.length : 0);
+      moveCount +
+      (hasClick ? clicks.length : 0) +
+      (hasScroll ? scoredScrolls.length : 0) +
+      (hasKeyboard ? countKeyDowns(keys) + inputs.length : 0);
     const maxWindowMs = Math.max(
       windowMs,
       hasClick ? clickWindowMs : 0,
       hasScroll ? scrollWindowMs : 0,
+      hasKeyboard ? keyWindowMs : 0,
     );
     const confidence = clamp(
       0.5 * (Math.min(evidenceCount / 25, 1) + Math.min(maxWindowMs / 2000, 1)),
@@ -263,6 +324,7 @@ export class ScoreComputer {
     if (mouseFeatures) reasons.push(...scoreReasons(mouseFeatures));
     if (clickFeatures) reasons.push(...clickReasons(clickFeatures));
     if (scrollFeatures) reasons.push(...scrollReasons(scrollFeatures));
+    if (keyboardFeatures) reasons.push(...keyboardReasons(keyboardFeatures));
 
     return { score: this.ema, confidence, reasons };
   }

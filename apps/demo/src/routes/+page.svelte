@@ -3,6 +3,8 @@
 	import {
 		IsThatAnAI,
 		type ClickSample,
+		type InputSample,
+		type KeySample,
 		type MouseFeatures,
 		type PointerSample,
 		type ScrollSample,
@@ -33,6 +35,7 @@
 	// con nombre y mantener el acoplamiento solo a la forma del valor.
 	interface SignalScores {
 		mouse: number | null;
+		keyboard: number | null;
 		click: number | null;
 		scroll: number | null;
 	}
@@ -163,7 +166,9 @@
 			trustedRatio: s?.trustedRatio ?? 0,
 			lastEventAt: s?.lastEventAt ?? 0,
 			clickCount: s?.clickCount ?? 0,
-			scrollCount: s?.scrollCount ?? 0
+			scrollCount: s?.scrollCount ?? 0,
+			keyCount: s?.keyCount ?? 0,
+			inputCount: s?.inputCount ?? 0
 		};
 	}
 
@@ -181,7 +186,12 @@
 	}
 
 	function readSignalScores(): SignalScores {
-		return detector?.getSignalScores() ?? { mouse: null, click: null, scroll: null };
+		return detector?.getSignalScores() ?? {
+			mouse: null,
+			keyboard: null,
+			click: null,
+			scroll: null
+		};
 	}
 
 	function readRecentClicks(sinceSeq?: number): ClickSample[] {
@@ -190,6 +200,14 @@
 
 	function readRecentScrolls(sinceSeq?: number): ScrollSample[] {
 		return detector ? detector.getRecentScrolls(sinceSeq) : [];
+	}
+
+	function readRecentKeys(sinceSeq?: number): KeySample[] {
+		return detector ? detector.getRecentKeys(sinceSeq) : [];
+	}
+
+	function readRecentInputs(sinceSeq?: number): InputSample[] {
+		return detector ? detector.getRecentInputs(sinceSeq) : [];
 	}
 
 	// En interacción normal manda el número real; en estados forzados se mantienen
@@ -368,6 +386,8 @@
 		getSignalScores={readSignalScores}
 		getRecentClicks={readRecentClicks}
 		getRecentScrolls={readRecentScrolls}
+		getRecentKeys={readRecentKeys}
+		getRecentInputs={readRecentInputs}
 		forced={urlOverride !== null || manualOverride !== null}
 	/>
 {/if}

@@ -3,6 +3,8 @@
 	// Subcomponente de DevPanel; solo se renderiza en desarrollo.
 	import type {
 		ClickSample,
+		InputSample,
+		KeySample,
 		MouseFeatures,
 		PointerSample,
 		ScrollSample,
@@ -12,6 +14,7 @@
 	// Forma estructural de las señales (una por señal, null sin evidencia).
 	interface SignalScores {
 		mouse: number | null;
+		keyboard: number | null;
 		click: number | null;
 		scroll: number | null;
 	}
@@ -22,7 +25,9 @@
 		getVerdict,
 		getSignalScores,
 		getRecentClicks,
-		getRecentScrolls
+		getRecentScrolls,
+		getRecentKeys,
+		getRecentInputs
 	}: {
 		getMouseFeatures: () => MouseFeatures | null;
 		getRecentPoints: (sinceSeq?: number) => PointerSample[];
@@ -30,6 +35,8 @@
 		getSignalScores: () => SignalScores;
 		getRecentClicks: (sinceSeq?: number) => ClickSample[];
 		getRecentScrolls: (sinceSeq?: number) => ScrollSample[];
+		getRecentKeys: (sinceSeq?: number) => KeySample[];
+		getRecentInputs: (sinceSeq?: number) => InputSample[];
 	} = $props();
 
 	type RecLabel = "humano" | "bot";
@@ -51,6 +58,8 @@
 		samples: PointerSample[];
 		clicks: ClickSample[];
 		scrolls: ScrollSample[];
+		keys: KeySample[];
+		inputs: InputSample[];
 		snapshots: Snapshot[];
 	}
 
@@ -86,9 +95,13 @@
 	let lastSeq = 0;
 	let lastClickSeq = 0;
 	let lastScrollSeq = 0;
+	let lastKeySeq = 0;
+	let lastInputSeq = 0;
 	let samples = $state<PointerSample[]>([]);
 	let clicks = $state<ClickSample[]>([]);
 	let scrolls = $state<ScrollSample[]>([]);
+	let keys = $state<KeySample[]>([]);
+	let inputs = $state<InputSample[]>([]);
 	let snapshots = $state<Snapshot[]>([]);
 	let sampleTimer: ReturnType<typeof setInterval> | null = null;
 	let snapshotTimer: ReturnType<typeof setInterval> | null = null;
@@ -119,6 +132,20 @@
 			}
 			lastScrollSeq = scrollsSince[scrollsSince.length - 1].seq;
 		}
+		const keysSince = getRecentKeys(lastKeySeq);
+		if (keysSince.length > 0) {
+			for (const k of keysSince) {
+				keys.push(k);
+			}
+			lastKeySeq = keysSince[keysSince.length - 1].seq;
+		}
+		const inputsSince = getRecentInputs(lastInputSeq);
+		if (inputsSince.length > 0) {
+			for (const i of inputsSince) {
+				inputs.push(i);
+			}
+			lastInputSeq = inputsSince[inputsSince.length - 1].seq;
+		}
 	}
 
 	function onSnapshotTick(): void {
@@ -141,10 +168,14 @@
 		samples = [];
 		clicks = [];
 		scrolls = [];
+		keys = [];
+		inputs = [];
 		snapshots = [];
 		lastSeq = 0;
 		lastClickSeq = 0;
 		lastScrollSeq = 0;
+		lastKeySeq = 0;
+		lastInputSeq = 0;
 		// Solo muestras nuevas: saltamos lo que ya existía en cada buffer.
 		const existing = getRecentPoints(0);
 		if (existing.length > 0) lastSeq = existing[existing.length - 1].seq;
@@ -152,6 +183,10 @@
 		if (existingClicks.length > 0) lastClickSeq = existingClicks[existingClicks.length - 1].seq;
 		const existingScrolls = getRecentScrolls(0);
 		if (existingScrolls.length > 0) lastScrollSeq = existingScrolls[existingScrolls.length - 1].seq;
+		const existingKeys = getRecentKeys(0);
+		if (existingKeys.length > 0) lastKeySeq = existingKeys[existingKeys.length - 1].seq;
+		const existingInputs = getRecentInputs(0);
+		if (existingInputs.length > 0) lastInputSeq = existingInputs[existingInputs.length - 1].seq;
 		sampleTimer = setInterval(onSamplesTick, 100);
 		snapshotTimer = setInterval(onSnapshotTick, 250);
 	}
@@ -182,6 +217,8 @@
 			samples,
 			clicks,
 			scrolls,
+			keys,
+			inputs,
 			snapshots
 		};
 		const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });

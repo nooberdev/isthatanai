@@ -76,11 +76,57 @@ export interface ScrollSample {
   source: 0 | 1;
 }
 
+/**
+ * Categoría de tecla, derivada de `event.code`/`event.key` DENTRO del listener
+ * y convertida de inmediato a un número. Nunca se guarda la cadena original.
+ * 0 letra, 1 número, 2 espacio, 3 borrar, 4 Enter, 5 flechas,
+ * 6 modificador (Ctrl/Cmd/Alt/Shift), 7 otra tecla imprimible.
+ */
+export type KeyCategory = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+/**
+ * Muestra de teclado: solo tiempos y una categoría numérica. `kind` 0 =
+ * keydown, 1 = keyup. Nunca contiene `event.key`, `event.code` ni texto.
+ */
+export interface KeySample {
+  seq: number;
+  t: number;
+  kind: 0 | 1;
+  category: KeyCategory;
+  trusted: 0 | 1;
+}
+
+/**
+ * Tipo de mutación de texto mapeado desde `beforeinput.inputType`:
+ * 0 insertText, 1 insertFromPaste, 2 insertFromDrop,
+ * 3 insertReplacementText / IME / composición, 4 deleteContentBackward,
+ * 5 otro.
+ */
+export type InputTypeCode = 0 | 1 | 2 | 3 | 4 | 5;
+
+/**
+ * Muestra de cambio de texto. Solo metadata: NUNCA se guarda `data`,
+ * `clipboardData` ni ningún carácter. `kind` siempre 0 (beforeinput/input).
+ */
+export interface InputSample {
+  seq: number;
+  t: number;
+  kind: 0;
+  inputType: InputTypeCode;
+  trusted: 0 | 1;
+}
+
 /** Score por señal: null cuando esa señal no tiene evidencia suficiente. */
 export interface SignalScores {
   mouse: number | null;
   click: number | null;
   scroll: number | null;
+  /**
+   * Teclado (keydown/keyup + mutaciones de texto). Se expone como propiedad
+   * no enumerable para no alterar la forma de los objetos que ya consumían
+   * las tres señales anteriores.
+   */
+  keyboard: number | null;
 }
 
 /** Estadísticas del colector, derivadas solo de números almacenados. */
@@ -95,6 +141,10 @@ export interface CollectorStats {
   clickCount: number;
   /** Muestras de scroll conservadas en el buffer del detector. */
   scrollCount: number;
+  /** Muestras de teclado conservadas (no enumerables, ver `getStats`). */
+  keyCount: number;
+  /** Mutaciones de texto conservadas (no enumerables, ver `getStats`). */
+  inputCount: number;
 }
 
 /** Configuración de la instancia con los ajustes del colector de puntero. */
@@ -105,6 +155,8 @@ export interface DetectorOptions extends Options {
   };
   click?: { bufferSize?: number };
   scroll?: { bufferSize?: number };
+  keyboard?: { bufferSize?: number };
+  input?: { bufferSize?: number };
   /** Reloj inyectable (default: performance.now o Date.now). Para tests. */
   now?: () => number;
 }

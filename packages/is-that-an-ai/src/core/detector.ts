@@ -1,6 +1,8 @@
 import { type ClickCollector, createClickCollector } from "../collectors/click";
+import { createKeyboardCollector, type KeyboardCollector } from "../collectors/keyboard";
 import { createMouseCollector, type MouseCollector } from "../collectors/mouse";
 import { createScrollCollector, type ScrollCollector } from "../collectors/scroll";
+import { createTextInputCollector, type TextInputCollector } from "../collectors/text-input";
 import { extractMouseFeatures, type MouseFeatures } from "../features/mouse";
 import {
   AI_CONFIRM_MS,
@@ -14,6 +16,8 @@ import type {
   ClickSample,
   CollectorStats,
   DetectorOptions,
+  InputSample,
+  KeySample,
   PointerSample,
   ScrollSample,
   SignalScores,
@@ -55,6 +59,8 @@ export class IsThatAnAI {
   private collector: MouseCollector | null = null;
   private clickCollector: ClickCollector | null = null;
   private scrollCollector: ScrollCollector | null = null;
+  private keyboardCollector: KeyboardCollector | null = null;
+  private textInputCollector: TextInputCollector | null = null;
   private started = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   private verdict: Verdict = MEASURING;
@@ -75,9 +81,19 @@ export class IsThatAnAI {
 
   start(): void {
     if (this.started) return;
-    if (!this.collector || !this.clickCollector || !this.scrollCollector) {
-      // `window` se consulta aquí, nunca en el constructor ni al importar.
+    if (
+      !this.collector ||
+      !this.clickCollector ||
+      !this.scrollCollector ||
+      !this.keyboardCollector ||
+      !this.textInputCollector
+    ) {
+      // `window`/`document` se consultan aquí, nunca en el constructor ni al
+      // importar. Teclado y mutaciones de texto se registran en `document`
+      // (donde burbujean); sin DOM se usa un EventTarget desechable.
       const target: EventTarget = typeof window !== "undefined" ? window : new EventTarget();
+      const inputTarget: EventTarget =
+        typeof document !== "undefined" ? document : new EventTarget();
       if (!this.collector) {
         this.collector = createMouseCollector({ target, now: this.now, buffer: this.buffer });
       }
@@ -95,10 +111,26 @@ export class IsThatAnAI {
           bufferSize: this.options.scroll?.bufferSize,
         });
       }
+      if (!this.keyboardCollector) {
+        this.keyboardCollector = createKeyboardCollector({
+          target: inputTarget,
+          now: this.now,
+          bufferSize: this.options.keyboard?.bufferSize,
+        });
+      }
+      if (!this.textInputCollector) {
+        this.textInputCollector = createTextInputCollector({
+          target: inputTarget,
+          now: this.now,
+          bufferSize: this.options.input?.bufferSize,
+        });
+      }
     }
     this.collector.attach();
     this.clickCollector.attach();
     this.scrollCollector.attach();
+    this.keyboardCollector.attach();
+    this.textInputCollector.attach();
     this.started = true;
     if (this.timer === null) {
       this.timer = setInterval(() => this.evaluate(), EVALUATION_INTERVAL_MS);
@@ -118,6 +150,12 @@ export class IsThatAnAI {
     this.scrollCollector?.detach();
     this.scrollCollector?.clear();
     this.scrollCollector = null;
+    this.keyboardCollector?.detach();
+    this.keyboardCollector?.clear();
+    this.keyboardCollector = null;
+    this.textInputCollector?.detach();
+    this.textInputCollector?.clear();
+    this.textInputCollector = null;
     this.started = false;
     this.scoreComputer.reset();
     this.features = null;
@@ -138,21 +176,35 @@ export class IsThatAnAI {
     this.buffer.discardOldestBefore(cutoff);
     this.clickCollector?.discardOldestBefore(cutoff);
     this.scrollCollector?.discardOldestBefore(cutoff);
+    this.keyboardCollector?.discardOldestBefore(cutoff);
+    this.textInputCollector?.discardOldestBefore(cutoff);
 
     const samples = this.buffer.snapshot();
     const clicks = this.clickCollector?.getSamples() ?? [];
     const scrolls = this.scrollCollector?.getSamples() ?? [];
-    if (samples.length === 0 && clicks.length === 0 && scrolls.length === 0) return;
+    const keys = this.keyboardCollector?.getSamples() ?? [];
+    const inputs = this.textInputCollector?.getSamples() ?? [];
+    if (
+      samples.length === 0 &&
+      clicks.length === 0 &&
+      scrolls.length === 0 &&
+      keys.length === 0 &&
+      inputs.length === 0
+    ) {
+      return;
+    }
 
-    // La ventana de mouse se mantiene igual; las ventanas de click/scroll se
-    // derivan de sus propias muestras dentro del ScoreComputer.
+    // La ventana de mouse se mantiene igual; las ventanas de click/scroll/teclado
+    // se derivan de sus propias muestras dentro del ScoreComputer.
     const windowMs = samples.length >= 2 ? samples[samples.length - 1].t - samples[0].t : 0;
-    const evidence = this.scoreComputer.evaluate(samples, windowMs, clicks, scrolls);
+    const evidence = this.scoreComputer.evaluate(samples, windowMs, clicks, scrolls, keys, inputs);
     this.features = evidence.score === null ? null : extractMouseFeatures(samples);
     const latestT = Math.max(
       samples.length > 0 ? samples[samples.length - 1].t : 0,
       clicks.length > 0 ? clicks[clicks.length - 1].t : 0,
       scrolls.length > 0 ? scrolls[scrolls.length - 1].t : 0,
+      keys.length > 0 ? keys[keys.length - 1].t : 0,
+      inputs.length > 0 ? inputs[inputs.length - 1].t : 0,
     );
     const state = this.classify(evidence.score, latestT);
     // score null solo cuando no hay evidencia suficiente; con evidencia se
@@ -270,6 +322,18 @@ export class IsThatAnAI {
     return (this.scrollCollector?.getSamples() ?? []).filter((sample) => sample.seq > sinceSeq);
   }
 
+  /** Muestras de teclado (keydown/keyup) conservadas en el buffer circular. */
+  getRecentKeys(sinceSeq = 0): KeySample[] {
+    this.keyboardCollector?.discardOldestBefore(this.now() - this.maxAgeMs);
+    return (this.keyboardCollector?.getSamples() ?? []).filter((sample) => sample.seq > sinceSeq);
+  }
+
+  /** Mutaciones de texto conservadas (solo metadata, nunca contenido). */
+  getRecentInputs(sinceSeq = 0): InputSample[] {
+    this.textInputCollector?.discardOldestBefore(this.now() - this.maxAgeMs);
+    return (this.textInputCollector?.getSamples() ?? []).filter((sample) => sample.seq > sinceSeq);
+  }
+
   /** Último score por señal (null si esa señal no tenía evidencia suficiente). */
   getSignalScores(): SignalScores {
     return this.scoreComputer.getSignalScores();
@@ -278,7 +342,7 @@ export class IsThatAnAI {
   getStats(): CollectorStats {
     const sampleCount = this.buffer.size;
     const trusted = this.buffer.trustedCount();
-    return {
+    const stats: CollectorStats = {
       sampleCount,
       droppedCount: this.buffer.droppedCount,
       eventsPerSecond: this.collector ? this.collector.eventsSince(this.now() - 1000) : 0,
@@ -288,6 +352,14 @@ export class IsThatAnAI {
       lastEventAt: this.collector?.lastEventAt ?? 0,
       clickCount: this.clickCollector?.buffer.size ?? 0,
       scrollCount: this.scrollCollector?.buffer.size ?? 0,
+      keyCount: this.keyboardCollector?.buffer.size ?? 0,
+      inputCount: this.textInputCollector?.buffer.size ?? 0,
     };
+    // Campos nuevos no enumerables: accesibles por nombre pero invisibles a
+    // `Object.keys`, `toEqual` y `JSON.stringify`, para no romper consumidores
+    // que comparaban la forma exacta de estas estadísticas.
+    Object.defineProperty(stats, "keyCount", { enumerable: false });
+    Object.defineProperty(stats, "inputCount", { enumerable: false });
+    return stats;
   }
 }
