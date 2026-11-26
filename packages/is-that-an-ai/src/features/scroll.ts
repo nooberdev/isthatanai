@@ -9,6 +9,13 @@
 // página, contenedor sin overflow), mientras que `source === 1` es el
 // desplazamiento real: mezclarlas contaría dos veces el mismo gesto.
 //
+// REGLA DE AUTOSCROLL (gesto humano legítimo): se excluyen del scoring las
+// rachas de >= 10 muestras `source === 1` con |dy| <= 100 y mediana de
+// intervalos <= 30 ms (cadencia de frame del botón medio + arrastre). No son
+// evidencia de IA. COSTE ACEPTADO: un bot que imite exactamente ese patrón
+// también se libra; preferimos el falso negativo antes que marcar al humano.
+// Si no queda ninguna muestra tras la exclusión, la señal no tiene evidencia.
+//
 // Umbrales documentados (todas se saturan con `linear`):
 // 1. deltaUniformity     - CV de |delta| por trazo: <=0.08 -> 1, >=0.5 -> 0.
 // 2. intervalRegularity  - CV de intervalos por trazo: <=0.08 -> 1, >=0.5 -> 0.
@@ -21,12 +28,17 @@
 // 5. noPauses            - ratio de pausas (>2x mediana, >=150ms): 0 -> 1, >=0.3 -> 0.
 // 6. roundDeltas         - ratio de deltas múltiplos de 50: >=0.95 -> 1, <=0.3 -> 0.
 // 7. axisLock            - |dx|/(|dx|+|dy|) medio: <=0.02 -> 1, >=0.25 -> 0.
+// 8. largeJumps          - ratio de saltos repetidos >= 300px: >=0.95 -> 1,
+//                          <=0.5 -> 0 (mínimo 2 saltos). Cubre scrollTo/PageDown
+//                          lentos, cuyos huecos (>300ms) dividen los trazos y
+//                          dejaban las medidas de ritmo en neutro.
 //
 // PESOS DE SCORE (normalizados por la suma de pesos > 0): intervalRegularity
 // 0.45, decelerationProfile 0.20, noPauses 0.10, directionChanges 0.10,
-// deltaUniformity 0.10, roundDeltas 0.05, axisLock 0. La rueda está cuantizada
-// por el dispositivo (roundDeltas apenas discrimina) y axisLock casi siempre
-// es vertical incluso en humanos, así que no deben decidir el veredicto.
+// deltaUniformity 0.10, roundDeltas 0.05, largeJumps 0.15 (medida específica
+// de salto grande repetido, peso pequeño y no tomado de los globales), axisLock 0.
+// La rueda está cuantizada por el dispositivo (roundDeltas apenas discrimina) y
+// axisLock casi siempre es vertical incluso en humanos, así que no deciden.
 //
 // Un "trazo" es un run de eventos separados por < 300ms. Sin evidencia ->
 // NEUTRAL = 0.5. La agregación entre trazos es media ponderada por longitud.
@@ -48,6 +60,61 @@ function preferredSource(samples: ScrollSample[]): ScrollSample[] {
   return samples.filter((sample) => sample.source === WHEEL_SOURCE);
 }
 
+/** Mínimo de muestras de una racha para considerarla autoscroll. */
+export const AUTOSCROLL_MIN_SAMPLES = 10;
+/** Paso máximo por muestra en el autoscroll del botón medio. */
+export const AUTOSCROLL_MAX_ABS_DY = 100;
+/** Mediana de intervalos máxima (cadencia de frame, ~60fps). */
+export const AUTOSCROLL_MAX_MEDIAN_DT_MS = 30;
+/** Hueco que rompe una racha candidata. */
+const AUTOSCROLL_RUN_GAP_MS = 100;
+
+function isAutoscrollCandidate(sample: ScrollSample): boolean {
+  return sample.source === DOCUMENT_SOURCE && Math.abs(sample.dy) <= AUTOSCROLL_MAX_ABS_DY;
+}
+
+/**
+ * Excluye las rachas de autoscroll humano antes de aplicar la preferencia de
+ * fuente. Ver el encabezado para el criterio y el coste (falso negativo).
+ * Se exporta para que el ScoreComputer calcule la evidencia sobre las mismas
+ * muestras que luego puntúan: si no queda nada, la señal es null.
+ */
+export function withoutAutoscroll(samples: ScrollSample[]): ScrollSample[] {
+  const excluded: boolean[] = new Array(samples.length).fill(false);
+  let start = 0;
+  while (start < samples.length) {
+    if (!isAutoscrollCandidate(samples[start])) {
+      start += 1;
+      continue;
+    }
+    let end = start + 1;
+    while (
+      end < samples.length &&
+      isAutoscrollCandidate(samples[end]) &&
+      samples[end].t - samples[end - 1].t <= AUTOSCROLL_RUN_GAP_MS
+    ) {
+      end += 1;
+    }
+    if (end - start >= AUTOSCROLL_MIN_SAMPLES) {
+      const dts: number[] = [];
+      for (let i = start + 1; i < end; i += 1) {
+        const dt = samples[i].t - samples[i - 1].t;
+        if (dt > 0) dts.push(dt);
+      }
+      if (dts.length > 0 && median(dts) <= AUTOSCROLL_MAX_MEDIAN_DT_MS) {
+        for (let i = start; i < end; i += 1) excluded[i] = true;
+      }
+    }
+    start = end;
+  }
+  return excluded.some(Boolean) ? samples.filter((_, i) => !excluded[i]) : samples;
+}
+
+/** Vista puntuable: sin autoscroll y con una sola fuente. */
+function viewOf(samples: ScrollSample[]): ScrollSample[] {
+  return preferredSource(withoutAutoscroll(samples));
+}
+
 export interface ScrollFeatures {
   deltaUniformity: number;
   intervalRegularity: number;
@@ -56,6 +123,7 @@ export interface ScrollFeatures {
   noPauses: number;
   roundDeltas: number;
   axisLock: number;
+  largeJumps: number;
 }
 
 interface Entry {
@@ -108,7 +176,7 @@ function intervalsOf(stroke: ScrollSample[]): number[] {
 }
 
 export function scrollDeltaUniformity(samples: ScrollSample[]): number {
-  samples = preferredSource(samples);
+  samples = viewOf(samples);
   const entries: Entry[] = [];
   for (const stroke of strokesOf(samples)) {
     if (stroke.length < 3) continue;
@@ -125,7 +193,7 @@ export function scrollDeltaUniformity(samples: ScrollSample[]): number {
 }
 
 export function scrollIntervalRegularity(samples: ScrollSample[]): number {
-  samples = preferredSource(samples);
+  samples = viewOf(samples);
   const entries: Entry[] = [];
   for (const stroke of strokesOf(samples)) {
     const intervals = intervalsOf(stroke);
@@ -136,7 +204,7 @@ export function scrollIntervalRegularity(samples: ScrollSample[]): number {
 }
 
 export function scrollDirectionChanges(samples: ScrollSample[]): number {
-  samples = preferredSource(samples);
+  samples = viewOf(samples);
   const entries: Entry[] = [];
   for (const stroke of strokesOf(samples)) {
     if (stroke.length < 3) continue;
@@ -161,7 +229,7 @@ export function scrollDirectionChanges(samples: ScrollSample[]): number {
 }
 
 export function scrollDecelerationProfile(samples: ScrollSample[]): number {
-  samples = preferredSource(samples);
+  samples = viewOf(samples);
   const entries: Entry[] = [];
   for (const stroke of strokesOf(samples)) {
     if (stroke.length < 6) continue;
@@ -184,7 +252,7 @@ export function scrollDecelerationProfile(samples: ScrollSample[]): number {
 }
 
 export function scrollNoPauses(samples: ScrollSample[]): number {
-  samples = preferredSource(samples);
+  samples = viewOf(samples);
   const intervals: number[] = [];
   for (let i = 1; i < samples.length; i += 1) {
     const dt = samples[i].t - samples[i - 1].t;
@@ -199,7 +267,7 @@ export function scrollNoPauses(samples: ScrollSample[]): number {
 }
 
 export function scrollRoundDeltas(samples: ScrollSample[]): number {
-  samples = preferredSource(samples);
+  samples = viewOf(samples);
   if (samples.length < 3) return SCROLL_NEUTRAL;
   let round = 0;
   for (const sample of samples) {
@@ -210,7 +278,7 @@ export function scrollRoundDeltas(samples: ScrollSample[]): number {
 }
 
 export function scrollAxisLock(samples: ScrollSample[]): number {
-  samples = preferredSource(samples);
+  samples = viewOf(samples);
   if (samples.length < 3) return SCROLL_NEUTRAL;
   const ratios = samples.map((sample) => {
     const ax = Math.abs(sample.dx);
@@ -218,6 +286,21 @@ export function scrollAxisLock(samples: ScrollSample[]): number {
     return ax / (ax + ay + 1e-9);
   });
   return 1 - linear(mean(ratios), 0.02, 0.25);
+}
+
+/**
+ * Salto grande repetido (>= 300px). Un solo salto no basta: requiere al
+ * menos 2 para no penalizar un gesto aislado. Cubre `scrollTo`/PageDown
+ * lentos, donde los huecos > 300ms parten los trazos y el resto de medidas
+ * quedaban en neutro (score 0.575, justo sobre el umbral).
+ * Thresholds: ratio >= 0.95 -> 1, <= 0.5 -> 0.
+ */
+export function scrollLargeJumps(samples: ScrollSample[]): number {
+  samples = viewOf(samples);
+  if (samples.length < 3) return SCROLL_NEUTRAL;
+  const jumps = samples.filter((sample) => Math.abs(sample.dy) >= 300).length;
+  if (jumps < 2) return 0;
+  return linear(jumps / samples.length, 0.5, 0.95);
 }
 
 export function extractScrollFeatures(samples: ScrollSample[]): ScrollFeatures {
@@ -229,11 +312,12 @@ export function extractScrollFeatures(samples: ScrollSample[]): ScrollFeatures {
     noPauses: scrollNoPauses(samples),
     roundDeltas: scrollRoundDeltas(samples),
     axisLock: scrollAxisLock(samples),
+    largeJumps: scrollLargeJumps(samples),
   };
 }
 
 /**
- * Pesos conservadores del score de scroll (suma 1). Ver el encabezado: la
+ * Pesos conservadores del score de scroll (suma 1.15; se normalizan). Ver el encabezado: la
  * rueda está cuantizada por el dispositivo y axisLock casi siempre es vertical.
  */
 export const SCROLL_FEATURE_WEIGHTS = {
@@ -244,6 +328,7 @@ export const SCROLL_FEATURE_WEIGHTS = {
   noPauses: 0.1,
   roundDeltas: 0.05,
   axisLock: 0,
+  largeJumps: 0.15,
 } as const satisfies Readonly<Record<keyof ScrollFeatures, number>>;
 
 /** Score de la señal de scroll: media ponderada de las medidas con peso > 0. */
@@ -254,6 +339,10 @@ export function computeScrollScore(features: ScrollFeatures): number {
     const weight = SCROLL_FEATURE_WEIGHTS[key];
     const value = features[key];
     if (weight > 0 && typeof value === "number" && Number.isFinite(value)) {
+      // `largeJumps` es evidencia de un patrón concreto: solo entra en el
+      // promedio cuando aparece. Así una rueda normal no se diluye por una
+      // medida que no aplica, y un scrollTo lento sí recibe su contribución.
+      if (key === "largeJumps" && value <= 0) continue;
       weighted += weight * clamp(value, 0, 1);
       total += weight;
     }
@@ -277,6 +366,7 @@ export function scrollReasons(features: ScrollFeatures, top = 2): string[] {
     noPauses: "Sin pausas entre gestos de scroll",
     roundDeltas: "Deltas de scroll numéricamente redondos",
     axisLock: "Scroll bloqueado en un solo eje",
+    largeJumps: "Saltos grandes repetidos de desplazamiento",
   };
   return (Object.keys(features) as Array<keyof ScrollFeatures>)
     .map((key) => ({ key, value: features[key], weight: SCROLL_FEATURE_WEIGHTS[key] }))

@@ -37,7 +37,7 @@ function humanScroll(): ScrollSample[] {
 describe("extractScrollFeatures", () => {
   it("devuelve 7 medidas en [0,1] y neutros sin evidencia", () => {
     const features = extractScrollFeatures(botScroll());
-    expect(Object.keys(features)).toHaveLength(7);
+    expect(Object.keys(features)).toHaveLength(8);
     for (const value of Object.values(features)) {
       expect(value).toBeGreaterThanOrEqual(0);
       expect(value).toBeLessThanOrEqual(1);

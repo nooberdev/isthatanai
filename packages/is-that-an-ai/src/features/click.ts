@@ -19,7 +19,10 @@
 // 5. singleButton        - ratio de muestras con button===0 (tras el filtro): 1.
 // 6. noPauses            - ratio de pausas (>3x mediana, >=300ms): 0 -> 1, >=0.3 -> 0.
 // 7. aimConsistency      - dispersión de la puntería respecto al paso típico:
-//                          <=0.2 -> 1, >=1 -> 0 (mismo punto => 1).
+//                          <=0.1 -> 1, >=0.5 -> 0 (mismo punto => 1). Umbral
+//                          endurecido: con 0.2..1 un humano de 6 clics con
+//                          posiciones variables aún daba "Puntería repetida
+//                          en el mismo punto" como razón engañosa.
 //
 // PESOS DE SCORE (conservadores, normalizados por la suma de pesos usados):
 // intervalRegularity 0.35, burstiness 0.30, aimConsistency 0.20,
@@ -163,7 +166,7 @@ export function clickAimConsistency(samples: ClickSample[]): number {
     );
   }
   const dispersion = meanDev / (median(steps) + 1e-9);
-  return 1 - linear(dispersion, 0.2, 1);
+  return 1 - linear(dispersion, 0.1, 0.5);
 }
 
 export function extractClickFeatures(samples: ClickSample[]): ClickFeatures {

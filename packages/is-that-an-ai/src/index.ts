@@ -43,6 +43,9 @@ export {
 } from "./features/mouse";
 export type { ScrollFeatures } from "./features/scroll";
 export {
+  AUTOSCROLL_MAX_ABS_DY,
+  AUTOSCROLL_MAX_MEDIAN_DT_MS,
+  AUTOSCROLL_MIN_SAMPLES,
   computeScrollScore,
   extractScrollFeatures,
   SCROLL_FEATURE_WEIGHTS,
@@ -52,9 +55,11 @@ export {
   scrollDeltaUniformity,
   scrollDirectionChanges,
   scrollIntervalRegularity,
+  scrollLargeJumps,
   scrollNoPauses,
   scrollReasons,
   scrollRoundDeltas,
+  withoutAutoscroll,
 } from "./features/scroll";
 export type { ScoredEvidence } from "./scoring/score";
 // Scoring.

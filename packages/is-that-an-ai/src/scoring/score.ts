@@ -22,6 +22,7 @@ import {
   extractScrollFeatures,
   type ScrollFeatures,
   scrollReasons,
+  withoutAutoscroll,
 } from "../features/scroll";
 import type { ClickSample, PointerSample, ScrollSample, SignalScores, Verdict } from "../types";
 import { clamp } from "../utils/math";
@@ -35,12 +36,14 @@ export const MIN_WINDOW_MS = 400;
 
 /**
  * Evidencia mínima para las señales nuevas:
- * - clics: >= 6 eventos (3 pares down/up) y ventana >= MIN_WINDOW_MS.
+ * - clics: >= 10 eventos (5 pares down/up) y ventana >= MIN_WINDOW_MS.
+ *   Con 2-3 clics las medidas son neutras y el score 0.5 generaba duda alta
+ *   ("HUMANO?") sin evidencia real: ahora la señal es null y manda el mouse.
  * - scrolls: >= 8 eventos y ventana >= MIN_WINDOW_MS.
  * Por debajo de esos umbrales la señal se ignora (null) y el resultado es
  * exactamente el del scoring de mouse original.
  */
-export const MIN_CLICKS = 6;
+export const MIN_CLICKS = 10;
 export const MIN_SCROLLS = 8;
 
 /**
@@ -194,13 +197,21 @@ export class ScoreComputer {
       windowMs >= MIN_WINDOW_MS;
 
     const clickWindowMs = clicks.length >= 2 ? clicks[clicks.length - 1].t - clicks[0].t : 0;
-    const scrollWindowMs = scrolls.length >= 2 ? scrolls[scrolls.length - 1].t - scrolls[0].t : 0;
+    // El autoscroll humano se excluye ANTES de contar evidencia: si solo hay
+    // autoscroll, la señal de scroll queda sin evidencia (null).
+    const scoredScrolls = withoutAutoscroll(scrolls);
+    const scrollWindowMs =
+      scoredScrolls.length >= 2
+        ? scoredScrolls[scoredScrolls.length - 1].t - scoredScrolls[0].t
+        : 0;
     const hasClick = clicks.length >= MIN_CLICKS && clickWindowMs >= MIN_WINDOW_MS;
-    const hasScroll = scrolls.length >= MIN_SCROLLS && scrollWindowMs >= MIN_WINDOW_MS;
+    const hasScroll = scoredScrolls.length >= MIN_SCROLLS && scrollWindowMs >= MIN_WINDOW_MS;
 
     const mouseFeatures: MouseFeatures | null = hasMouse ? extractMouseFeatures(samples) : null;
     const clickFeatures: ClickFeatures | null = hasClick ? extractClickFeatures(clicks) : null;
-    const scrollFeatures: ScrollFeatures | null = hasScroll ? extractScrollFeatures(scrolls) : null;
+    const scrollFeatures: ScrollFeatures | null = hasScroll
+      ? extractScrollFeatures(scoredScrolls)
+      : null;
 
     this.signalScores = {
       mouse: mouseFeatures ? computeScore(mouseFeatures) : null,
@@ -236,7 +247,7 @@ export class ScoreComputer {
     // La misma fórmula de confianza del mouse, extendida con el resto de
     // señales solo cuando aportan evidencia. Con solo mouse es idéntica.
     const evidenceCount =
-      moveCount + (hasClick ? clicks.length : 0) + (hasScroll ? scrolls.length : 0);
+      moveCount + (hasClick ? clicks.length : 0) + (hasScroll ? scoredScrolls.length : 0);
     const maxWindowMs = Math.max(
       windowMs,
       hasClick ? clickWindowMs : 0,
