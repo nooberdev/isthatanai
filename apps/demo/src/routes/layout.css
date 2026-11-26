@@ -285,8 +285,8 @@ html {
   align-items: center;
   gap: 2rem;
   padding: 2rem 1.25rem 0;
-  /* El contenido se funde en el badge con el mismo progreso y el mismo eje:
-     opacidad 1→0 y una contracción mínima, sin rebote. */
+  /* El contenido se desvanece con el progreso del hero, independiente de la
+     línea inferior: opacidad 1→0 y una contracción mínima, sin rebote. */
   opacity: calc(1 - var(--hero-progress, 0));
   transform: scale(calc(1 - 0.04 * var(--hero-progress, 0)));
   transform-origin: center center;
@@ -443,8 +443,8 @@ html {
     clip-path: none;
     transition: opacity var(--dur-180) linear;
   }
-  /* Sin interpolación del progreso: el hero queda quieto y el badge entra
-     por opacidad simple al cruzar el umbral (lo gobierna .is-visible). */
+  /* Sin interpolación del progreso: el hero queda quieto. La línea inferior
+     tampoco interpola: su relleno sigue el scroll sin transición. */
   .hero-content {
     opacity: 1;
     transform: none;

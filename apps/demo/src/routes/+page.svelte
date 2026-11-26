@@ -12,7 +12,7 @@
 	import TrailCanvas from "#lib/components/TrailCanvas.svelte";
 	import CustomCursor from "#lib/components/CustomCursor.svelte";
 	import PageControls from "#lib/components/PageControls.svelte";
-	import VerdictBadge from "#lib/components/VerdictBadge.svelte";
+	import ScrollLine from "#lib/components/ScrollLine.svelte";
 	import DevPanel from "#lib/components/DevPanel.svelte";
 	import ClickTest from "#lib/components/sections/ClickTest.svelte";
 	import TypingTest from "#lib/components/sections/TypingTest.svelte";
@@ -43,14 +43,14 @@
 		ia: "var(--color-verdict-ia)"
 	};
 
-	// Rellenos planos del badge, distintos de los del hero: la tinta es siempre
-	// negra, así que todos pasan 4.5:1 contra #000.
-	const BADGE_FILL: Record<VerdictState, string> = {
+	// Colores planos de la línea de scroll, distintos de los del hero: mismo
+	// relleno drenched que antes, ahora como indicador inferior.
+	const LINE_FILL: Record<VerdictState, string> = {
 		midiendo: "#E5E5EA",
 		humano: "#B4FF2E",
 		ia: "#FF432E"
 	};
-	const BADGE_DOUBT_FILL = "#FFC400";
+	const LINE_DOUBT_FILL = "#FFC400";
 
 	// Textos de reserva de la Etapa 3: se usan solo si la librería no da razones.
 	const FALLBACK_REASON: Record<VerdictState, string> = {
@@ -111,11 +111,9 @@
 	let prevCommitted = $state<VerdictState>("midiendo");
 	let willClip = $state(false);
 
-	// El badge nace del hero: se mide contra la altura real del hero, no contra
-	// un valor fijo, para respetar 100dvh y el gutter de scroll. El progreso se
-	// publica como --hero-progress para que hero y badge compartan el mismo eje.
+	// El hero conserva su propio eje con --hero-progress; la línea inferior es
+	// siempre completa y solo cambia de color con el veredicto.
 	let heroEl = $state<HTMLElement | null>(null);
-	let badgeVisible = $state(false);
 
 	// Instancia única, creada en onMount (nunca a nivel de módulo: SSR-safe).
 	let detector = $state<IsThatAnAI | null>(null);
@@ -231,14 +229,14 @@
 	let baseColor = $derived(stateColor(baseState, doubt));
 	let topColor = $derived(stateColor(effectiveState, doubt));
 
-	// Badge drenched: el relleno es el estado y la tinta siempre negra.
-	// La duda no matiza el color del estado: lo sustituye por ámbar plano.
-	let badgeColor = $derived(
+	// Color de la línea: el estado manda; la duda sustituye el color por ámbar
+	// plano a través de la misma prop `color`.
+	let lineColor = $derived(
 		effectiveState === "midiendo"
-			? BADGE_FILL.midiendo
+			? LINE_FILL.midiendo
 			: showQuestion
-				? BADGE_DOUBT_FILL
-				: BADGE_FILL[effectiveState]
+				? LINE_DOUBT_FILL
+				: LINE_FILL[effectiveState]
 	);
 
 	// Sondeo ~4 Hz: onVerdict solo dispara al cambiar el estado.
@@ -288,13 +286,11 @@
 		urlOverride = stateFromUrl();
 		setupSectionReveal();
 
-		// Progreso 0→1 del hero: el contenido se desvanece mientras el badge
-		// entra con la misma curva. Umbral mínimo para que en reposo (p = 0) no
-		// quede ningún artefacto. Inmediato al cargar ya scrolleado.
+		// Progreso 0→1 del hero: el contenido se desvanece con la misma curva.
+		// Se publica como --hero-progress para la salida del hero, sin cambios.
 		const updateScroll = () => {
 			const heroHeight = heroEl?.offsetHeight ?? window.innerHeight;
 			const p = clamp01(window.scrollY / Math.max(heroHeight, 1));
-			badgeVisible = p > 0.01;
 			document.documentElement.style.setProperty("--hero-progress", p.toFixed(4));
 		};
 		window.addEventListener("scroll", updateScroll, { passive: true });
@@ -373,12 +369,7 @@
 
 <PageControls bind:trailEnabled bind:cursorEnabled onReset={resetSession} />
 
-<VerdictBadge
-	label={WORD[effectiveState]}
-	question={showQuestion}
-	color={badgeColor}
-	visible={badgeVisible}
-/>
+<ScrollLine color={lineColor} />
 
 <CustomCursor enabled={cursorEnabled} />
 
