@@ -72,6 +72,11 @@ Ajustar pesos con esos datos, bajar falsos positivos y añadir el modo accesibil
 Coherencia entre mouse, teclado y clics; detección de repeticiones y de "humanización falsa".
 
 - Randomizar qué señales pesan más, comprobaciones sorpresa de coherencia, protección contra manipulación, detección de eventos inyectados, detección de replay, detección de ruido falso, comprobación de que el ruido sea humano y no números aleatorios, detección de ritmo generado por fórmula.
+- **Fail-closed:** "sin veredicto" es "no verificado", jamás "humano". Un bloqueo de la librería no debe otorgar confianza.
+- **Liveness:** señal periódica de "sigo viva" para que la página note si apagaron o parchearon el detector.
+- **Repetición en la sesión:** una grabación humana reproducida delata trayectorias idénticas.
+- **Coste, no secreto:** el código es público; las reglas fijas se esquivan, así que se priorizan formas estadísticas y coherencia entre señales. Sin ofuscación.
+- **Límites aceptados:** un agente que controla el navegador de verdad genera eventos reales; sin servidor no se detecta la misma grabación en otra sesión; si el usuario parchea la librería, lo importante se verifica en el servidor de la web.
 
 ### Etapa 11 — API completa y empaquetado
 

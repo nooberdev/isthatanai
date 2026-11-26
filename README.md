@@ -10,6 +10,43 @@ Incluye una página demo ultra minimalista.
 > score preliminar con medidas reales; el resto de las señales siguen en el roadmap.
 > La demo pública es una **beta**: el puntaje es orientativo, no una verdad absoluta.
 
+## Promesa honesta (leer antes de usarla)
+
+Esta librería es de código abierto y corre en el navegador del usuario: quien quiera
+engañarla puede leer las reglas y probar hasta que le salga. El objetivo no es que sea
+imposible de esquivar, sino que **esquivarlo sea caro**, que a veces se note y que
+**nunca sea la única puerta de algo importante**.
+
+> Detecta agentes comunes y bots sin disimular, le complica la vida a los que
+> disimulan, y no detiene a un atacante dedicado que controla su propio navegador.
+> Úsalo como una señal más, no como cerradura.
+
+Lo que sí puede hacer:
+
+- Combinar señales (mouse, clics, teclado, scroll): falsificar una es fácil; falsificar
+  todas de forma consistente cuesta mucho (Etapa 10).
+- Medir formas estadísticas, no reglas fijas: "velocidad constante = bot" se esquiva en
+  cinco minutos; preguntarse si el ruido parece humano o son números al azar aguanta más.
+- Cambiar los chequeos en cada sesión: con código abierto se ve la lista, pero igual
+  hay que pasarlos todos.
+- Tratar **"sin veredicto" como "no verificado", nunca como "humano"**. Hoy
+  `getStats().trustedRatio` permite a la página desconfiar de eventos sintéticos;
+  la señal de "sigo viva" y la detección de repeticiones llegan en la Etapa 10.
+- Detectar repeticiones dentro de una sesión: una grabación humana reproducida repite
+  trayectorias idénticas.
+- Actualizarse cuando aparece un truco nuevo.
+
+Lo que no haremos: ofuscar el código. En un proyecto abierto es teatro, se desarma en
+minutos y solo estorba a quien quiere ayudar.
+
+Lo que no podemos resolver:
+
+- Una extensión o herramienta que controle el navegador de verdad y envíe eventos
+  reales: se ve igual que un agente.
+- Sin servidor, no podemos reconocer que la misma grabación se reutiliza en otra sesión.
+- Si alguien modifica la librería en su propio navegador, no hay nada que hacer; lo
+  importante siempre debe verificarse en el servidor de la web.
+
 ## Demo pública (beta)
 
 `https://nooberdev.github.io/is-that-an-ai/`
