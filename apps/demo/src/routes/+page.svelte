@@ -43,6 +43,15 @@
 		ia: "var(--color-verdict-ia)"
 	};
 
+	// Rellenos planos del badge, distintos de los del hero: la tinta es siempre
+	// negra, así que todos pasan 4.5:1 contra #000.
+	const BADGE_FILL: Record<VerdictState, string> = {
+		midiendo: "#E5E5EA",
+		humano: "#B4FF2E",
+		ia: "#FF432E"
+	};
+	const BADGE_DOUBT_FILL = "#FFC400";
+
 	// Textos de reserva de la Etapa 3: se usan solo si la librería no da razones.
 	const FALLBACK_REASON: Record<VerdictState, string> = {
 		midiendo: "esperando movimiento",
@@ -222,16 +231,14 @@
 	let baseColor = $derived(stateColor(baseState, doubt));
 	let topColor = $derived(stateColor(effectiveState, doubt));
 
-	// Badge: solo el punto tiñe el estado; la superficie y la tinta son neutrales.
-	// Con duda se usa el ámbar del veredicto, que matiza el "?" sin gritar.
+	// Badge drenched: el relleno es el estado y la tinta siempre negra.
+	// La duda no matiza el color del estado: lo sustituye por ámbar plano.
 	let badgeColor = $derived(
 		effectiveState === "midiendo"
-			? STATE_COLOR.midiendo
+			? BADGE_FILL.midiendo
 			: showQuestion
-				? effectiveState === "humano"
-					? "var(--color-verdict-humano-doubt)"
-					: "var(--color-verdict-ia-doubt)"
-				: STATE_COLOR[effectiveState]
+				? BADGE_DOUBT_FILL
+				: BADGE_FILL[effectiveState]
 	);
 
 	// Sondeo ~4 Hz: onVerdict solo dispara al cambiar el estado.
@@ -368,7 +375,6 @@
 
 <VerdictBadge
 	label={WORD[effectiveState]}
-	score={scoreText}
 	question={showQuestion}
 	color={badgeColor}
 	visible={badgeVisible}
