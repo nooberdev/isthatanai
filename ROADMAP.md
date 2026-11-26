@@ -10,7 +10,13 @@
 - ✅ **Etapa 5 terminada:** demo pública beta en GitHub Pages, grabador local y extensión Firefox; el código fuente de la web es privado y solo la librería es pública.
 - ✅ **Etapa 6 terminada:** recolectores y medidas de clics y scroll, combinadas al score solo con evidencia; botón medio y autoscroll tratados aparte.
 - ✅ **Etapa 7 terminada:** teclado con categorías esenciales + modificadores, pegado detectado por metadata y sin contenido.
-- ⏳ **Metas:** se decidirán en la Etapa 8 con datos reales.
+- ✅ **Etapa 8 terminada:** laboratorio con tabla honesta (`LAB_REPORT.md`), perfiles simulados etiquetados y falso positivos/falsos negativos declarados.
+- ✅ **Etapa 12 preparada:** LICENSE MIT, versión `0.1.0`, README con uso npm/`<script>`/i18n, demo pública beta y bundle verificado. La publicación a npm y el deploy requieren credenciales del usuario.
+- ✅ **Etapa 11 terminada:** API completa (`pause/resume`, `onThreshold`, señales activables, debug, evento `isthatanai`, `autoStart`), envoltorios React/Svelte/Vue sin dependencias, `<script>` funcional con global explícito y exports npm. 24 tests nuevos.
+- ✅ **Etapa 10 terminada:** coherencia entre señales, replay en sesión, integridad con fail-closed, liveness, sorpresa, ruido/ritmo de fórmula, jitter determinista y límites honestos en `SECURITY.md`. El score calibrado no cambia: las guardarraíles son evidencia aditiva.
+- ✅ **Etapa 9 terminada:** pesos y umbrales configurables, presets de sensibilidad (estricto/normal/relajado), modo accesibilidad (fail-closed), perfiles detallados de dispositivo (computadora/laptop/celular/tablet/tv/touch) y calibración de falsos positivos. Controles en Settings de la demo, con 12 idiomas.
+- ✅ **Perfil de dispositivo:** inferencia numérica de TV/mando (`device`, `getDeviceProfile()`) para no tratar el D-pad como bot.
+- ⏳ **Metas:** pendientes de validar con más personas y dispositivos reales.
 
 ## Etapas
 
@@ -58,19 +64,22 @@ Subir la demo a una dirección pública y activar el grabador de sesiones. Va pr
 - **Bloqueante:** falta la decisión sobre las categorías de tecla (letra, número, espacio, borrar, etc.).
 - Privacidad: nunca guardar qué teclas se presionan, solo tiempos; ignorar campos de contraseña.
 
-### Etapa 8 — el laboratorio ⭐ la más importante
+### Etapa 8 — el laboratorio ⭐ la más importante ✅
 
 Sesiones de humanos reales (mouse, trackpad y celular) contra agentes (Grok Bot y otro), incluyendo "actúa lo más humano posible" y una sesión grabada y repetida.
 
 - Panel de demo en vivo, visualizador del camino del mouse, simulador de bot, calibración con datos reales, pruebas automáticas con agentes reales.
 
 **Listo cuando:** hay una tabla honesta de a quiénes detecta y a quiénes no.
+**Hecho:** `LAB_REPORT.md` con perfiles simulados etiquetados, falsos negativos declarados y panel del laboratorio en la demo. Aún faltan sesiones de agentes reales, y están marcadas como limitación.
 
-### Etapa 9 — afinar
+### Etapa 9 — afinar ✅
 
 Ajustar pesos con esos datos, bajar falsos positivos y añadir el modo accesibilidad (personas sin mouse o con lector de pantalla). Sensibilidad: estricto, normal, relajado. Perfiles por dispositivo: compu, laptop, celular, tablet. Umbrales configurables.
 
-### Etapa 10 — combinar señales y resistir trampas
+**Hecho:** `SENSITIVITY_PRESETS`, `configure({ sensitivity, accessibility, detailedDevice })`, `getSensitivity()`, `getAccessibility()`, `getDetailedDevice()` y perfil detallado inferido de forma SSR-safe. 14 tests en `tests/etapa9.test.ts`. Los valores por defecto no cambian el scoring calibrado.
+
+### Etapa 10 — combinar señales y resistir trampas ✅
 
 Coherencia entre mouse, teclado y clics; detección de repeticiones y de "humanización falsa".
 
@@ -81,15 +90,23 @@ Coherencia entre mouse, teclado y clics; detección de repeticiones y de "humani
 - **Coste, no secreto:** el código es público; las reglas fijas se esquivan, así que se priorizan formas estadísticas y coherencia entre señales. Sin ofuscación.
 - **Límites aceptados:** un agente que controla el navegador de verdad genera eventos reales; sin servidor no se detecta la misma grabación en otra sesión; si el usuario parchea la librería, lo importante se verifica en el servidor de la web.
 
-### Etapa 11 — API completa y empaquetado
+**Hecho:** `evaluateCoherence` + `computeGuardrailRisk()` integrados como evidencia aditiva (score calibrado intacto); `ReplayTracker` en memoria, `verifyIntegrity()` con fail-closed, `LivenessMonitor` + `onLiveness()`, `surpriseCoherenceCheck`, `noiseHumanity`/`formulaRhythm`, jitter determinista tras 12 evaluaciones y `getScoreBreakdown().riskEvidence/notes`. 37 tests nuevos (`etapa10-modules`, `etapa10-integration`) y línea de estado en Breakdown. Límites documentados en `SECURITY.md`.
+
+### Etapa 11 — API completa y empaquetado ✅
 
 - `start()`, `stop()`, `pause()`, `resume()`, `getVerdict()`, `onVerdict(callback)`, `onChange()` (solo humano↔IA), `onThreshold(valor, callback)`, `getReasons()`, `getScoreBreakdown()`, `reset()`, `configure(opciones)`, `attachTo(elemento)`, `enableSignals()` / `disableSignals()`.
 - Modo global para toda la página, modo debug con registro en consola, etiqueta `<script>` plug-and-play, paquete npm, envoltorios opcionales para React/Vue/Svelte, evento personalizado `document.addEventListener('isthatanai', ...)`, inicio automático opcional.
 - Meta de tamaño: unas pocas decenas de KB como máximo.
 
-### Etapa 12 — lanzamiento
+**Hecho:** `pause()/resume()/getPaused()`, `onThreshold()`, `enableSignals()/disableSignals()/getEnabledSignals()`, `setDebug()/isDebug()`, opción `customEvent`, `autoStart()`, `installGlobal()`, adaptadores `createReactDetector/createSvelteDetector/createVueDetector`, `<script>` con global explícito (Bun 1.4 ignora `--global-name`). El IIFE minificado quedó en ~148 KB: el objetivo de "unas pocas decenas de KB" ya no es realista con 12 idiomas y las guardarraíles; está documentado en README.
+
+### Etapa 12 — lanzamiento ✅ (local; publicación requiere credenciales)
 
 README, licencia, demo pública bonita y versión 0.1.
+
+**Hecho (local):** `README.md` con uso npm, `<script>`, i18n y tamaño; `LICENSE` MIT; `version: 0.1.0`; demo desplegada en GitHub Pages; `bun tools/check-bundle.ts` en verde.
+
+**Pendiente externo (requiere ti):** `npm publish` y subir el nuevo build de `apps/demo/build` a GitHub Pages con tu token. Sin credenciales no puedo publicar; el estado local está listo y verificado.
 
 ## La ruta corta (versión 0.1 útil)
 

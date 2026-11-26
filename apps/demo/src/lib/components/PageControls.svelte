@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { tr } from "#lib/i18n";
 
 	interface Props {
 		trailEnabled: boolean;
@@ -60,12 +61,12 @@
 </script>
 
 <div class="page-controls" bind:this={rootEl}>
-	<div class="page-controls__bar" role="group" aria-label="Controles de la demo">
+	<div class="page-controls__bar" role="group" aria-label={tr("controls.group.aria")}>
 		<button
 			type="button"
 			class="ctl"
-			aria-label={dark ? "Activar tema claro" : "Activar tema oscuro"}
-			title={dark ? "Activar tema claro" : "Activar tema oscuro"}
+			aria-label={dark ? tr("controls.theme.light") : tr("controls.theme.dark")}
+			title={dark ? tr("controls.theme.light") : tr("controls.theme.dark")}
 			aria-pressed={dark}
 			onclick={toggleTheme}
 		>
@@ -79,8 +80,8 @@
 			type="button"
 			class="ctl"
 			bind:this={settingsBtn}
-			aria-label="Ajustes de la demo"
-			title="Ajustes de la demo"
+			aria-label={tr("controls.settings.aria")}
+			title={tr("controls.settings.aria")}
 			aria-expanded={open}
 			onclick={() => (open = !open)}
 		>
@@ -89,16 +90,16 @@
 	</div>
 
 	{#if open}
-		<div class="popover" role="dialog" aria-label="Ajustes de la demo">
-			<p class="popover__title">Ajustes de la demo</p>
+		<div class="popover" role="dialog" aria-label={tr("controls.settings.aria")}>
+			<p class="popover__title">{tr("controls.popover.title")}</p>
 			<div class="popover__row">
-				<span>Estela</span>
+				<span>{tr("controls.trail")}</span>
 				<button
 					type="button"
 					role="switch"
 					class="toggle"
 					class:is-on={trailEnabled}
-					aria-label="Estela"
+					aria-label={tr("controls.trail")}
 					aria-checked={trailEnabled}
 					onclick={() => (trailEnabled = !trailEnabled)}
 				>
@@ -106,20 +107,20 @@
 				</button>
 			</div>
 			<div class="popover__row">
-				<span>Cursor propio</span>
+				<span>{tr("controls.cursor")}</span>
 				<button
 					type="button"
 					role="switch"
 					class="toggle"
 					class:is-on={cursorEnabled}
-					aria-label="Cursor propio"
+					aria-label={tr("controls.cursor")}
 					aria-checked={cursorEnabled}
 					onclick={() => (cursorEnabled = !cursorEnabled)}
 				>
 					<span class="toggle__knob" aria-hidden="true"></span>
 				</button>
 			</div>
-			<button type="button" class="popover__reset" onclick={reset}>Reiniciar sesión</button>
+			<button type="button" class="popover__reset" onclick={reset}>{tr("controls.reset")}</button>
 		</div>
 	{/if}
 </div>

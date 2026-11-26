@@ -42,8 +42,23 @@ const CATEGORY = 3;
 const TRUSTED = 4;
 const FIELDS = 5;
 
-function numeric(value: number | undefined, fallback: number): number {
+/** Lectura defensiva: un getter que lanza se trata como propiedad ausente. */
+function read(object: object, key: string): unknown {
+  try {
+    return (object as Record<string, unknown>)[key];
+  } catch {
+    return undefined;
+  }
+}
+
+function numeric(object: object, key: string, fallback: number): number {
+  const value = read(object, key);
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+/** Solo `true` cuenta como confiable: `1`, `"true"` o un getter hostil no. */
+function trustedOf(object: object): 0 | 1 {
+  return read(object, "isTrusted") === true ? 1 : 0;
 }
 
 /**
@@ -51,8 +66,10 @@ function numeric(value: number | undefined, fallback: number): number {
  * solo fallback. Ambas cadenas se usan AQUÍ y nunca se conservan.
  */
 export function keyCategoryOf(input: KeyboardLike): KeyCategory {
-  const code = typeof input.code === "string" ? input.code : "";
-  const key = typeof input.key === "string" ? input.key : "";
+  const codeValue = read(input, "code");
+  const keyValue = read(input, "key");
+  const code = typeof codeValue === "string" ? codeValue : "";
+  const key = typeof keyValue === "string" ? keyValue : "";
 
   if (
     /^(Control|Meta|Alt|Shift)(Left|Right)$/.test(code) ||
@@ -107,22 +124,35 @@ export function createKeyboardCollector({
   // event.timeStamp, igual que los colectores de puntero/click/scroll.
   const eventTimes: number[] = [];
 
+  function clock(): number | null {
+    try {
+      const value = now();
+      return typeof value === "number" && Number.isFinite(value) ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
   function record(event: Event, kind: 0 | 1): void {
-    // Contraseñas: se ignora el evento SIN leer su valor.
+    if (!attached) return;
+    // Contraseñas: se ignora el evento SIN leer su valor. Un target hostil se
+    // clasifica como sensible (fail-closed) y tampoco derriba el listener.
     if (isSensitiveTarget(event)) return;
-    const input = event as unknown as KeyboardLike;
-    const t = numeric(input.timeStamp, 0);
-    const category = keyCategoryOf(input);
-    const trusted: 0 | 1 = input.isTrusted ? 1 : 0;
+    const input = event as unknown as object;
+    const t = numeric(input, "timeStamp", 0);
+    const category = keyCategoryOf(input as KeyboardLike);
+    const trusted = trustedOf(input);
 
     seq += 1;
     buffer.push(seq, t, kind, category, trusted);
     lastEventAt = t;
 
-    const at = now();
-    eventTimes.push(at);
-    const cutoff = at - 1000;
-    while (eventTimes.length > 0 && eventTimes[0] < cutoff) eventTimes.shift();
+    const at = clock();
+    if (at !== null) {
+      eventTimes.push(at);
+      const cutoff = at - 1000;
+      while (eventTimes.length > 0 && eventTimes[0] < cutoff) eventTimes.shift();
+    }
   }
 
   const onDown = (event: Event): void => record(event, 0);
@@ -130,16 +160,24 @@ export function createKeyboardCollector({
 
   function attach(): void {
     if (attached) return;
-    target.addEventListener("keydown", onDown, LISTENER_OPTIONS);
-    target.addEventListener("keyup", onUp, LISTENER_OPTIONS);
     attached = true;
+    try {
+      target.addEventListener("keydown", onDown, LISTENER_OPTIONS);
+      target.addEventListener("keyup", onUp, LISTENER_OPTIONS);
+    } catch {
+      detach();
+    }
   }
 
   function detach(): void {
     if (!attached) return;
-    target.removeEventListener("keydown", onDown, LISTENER_OPTIONS);
-    target.removeEventListener("keyup", onUp, LISTENER_OPTIONS);
     attached = false;
+    try {
+      target.removeEventListener("keydown", onDown, LISTENER_OPTIONS);
+      target.removeEventListener("keyup", onUp, LISTENER_OPTIONS);
+    } catch {
+      // target hostil: no se puede hacer más.
+    }
   }
 
   return {
@@ -149,6 +187,7 @@ export function createKeyboardCollector({
     getSamples: () => buffer.rows().map(toSample),
     discardOldestBefore: (tMin: number) => buffer.discardOldestBefore(tMin, T),
     eventsSince(cutoff: number): number {
+      if (typeof cutoff !== "number" || !Number.isFinite(cutoff)) return 0;
       while (eventTimes.length > 0 && eventTimes[0] < cutoff) eventTimes.shift();
       return eventTimes.length;
     },

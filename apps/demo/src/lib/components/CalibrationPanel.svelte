@@ -8,31 +8,19 @@
 		MouseFeatures,
 		PointerSample,
 		ScrollSample,
-		Verdict
+		SignalScores
 	} from "is-that-an-ai";
-
-	// Forma estructural de las señales (una por señal, null sin evidencia).
-	interface SignalScores {
-		mouse: number | null;
-		keyboard: number | null;
-		click: number | null;
-		scroll: number | null;
-	}
+	import { live } from "#lib/detector/live.svelte";
+	import { tr, type DemoTranslationKey } from "#lib/i18n";
 
 	let {
-		getMouseFeatures,
 		getRecentPoints,
-		getVerdict,
-		getSignalScores,
 		getRecentClicks,
 		getRecentScrolls,
 		getRecentKeys,
 		getRecentInputs
 	}: {
-		getMouseFeatures: () => MouseFeatures | null;
 		getRecentPoints: (sinceSeq?: number) => PointerSample[];
-		getVerdict: () => Verdict;
-		getSignalScores: () => SignalScores;
 		getRecentClicks: (sinceSeq?: number) => ClickSample[];
 		getRecentScrolls: (sinceSeq?: number) => ScrollSample[];
 		getRecentKeys: (sinceSeq?: number) => KeySample[];
@@ -63,28 +51,21 @@
 		snapshots: Snapshot[];
 	}
 
-	const MEASURES: Array<{ key: keyof MouseFeatures; label: string }> = [
-		{ key: "straightness", label: "Rectitud" },
-		{ key: "teleport", label: "Teletransporte" },
-		{ key: "speedUniformity", label: "Velocidad constante" },
-		{ key: "jerk", label: "Jerk" },
-		{ key: "tremor", label: "Temblor" },
-		{ key: "intervalRegularity", label: "Ritmo de eventos" },
-		{ key: "overshoot", label: "Sobrepaso" },
-		{ key: "turnSmoothness", label: "Giros suaves" },
-		{ key: "microPauses", label: "Micro-pausas" },
-		{ key: "roundSteps", label: "Pasos redondos" }
+	const MEASURES: Array<{ key: keyof MouseFeatures; labelKey: DemoTranslationKey }> = [
+		{ key: "straightness", labelKey: "calib.measure.straightness" },
+		{ key: "teleport", labelKey: "calib.measure.teleport" },
+		{ key: "speedUniformity", labelKey: "calib.measure.speedUniformity" },
+		{ key: "jerk", labelKey: "calib.measure.jerk" },
+		{ key: "tremor", labelKey: "calib.measure.tremor" },
+		{ key: "intervalRegularity", labelKey: "calib.measure.intervalRegularity" },
+		{ key: "overshoot", labelKey: "calib.measure.overshoot" },
+		{ key: "turnSmoothness", labelKey: "calib.measure.turnSmoothness" },
+		{ key: "microPauses", labelKey: "calib.measure.microPauses" },
+		{ key: "roundSteps", labelKey: "calib.measure.roundSteps" }
 	];
 
-	// ---- Medidas: sondeo a ~4 Hz de getMouseFeatures() ----
-	let features = $state<MouseFeatures | null>(null);
-	$effect(() => {
-		features = getMouseFeatures();
-		const id = setInterval(() => {
-			features = getMouseFeatures();
-		}, 250);
-		return () => clearInterval(id);
-	});
+	// ---- Medidas: leídas del sondeo compartido ----
+	let features = $derived(live.features);
 
 	// ---- Grabador ----
 	let recording = $state(false);
@@ -106,9 +87,13 @@
 	let sampleTimer: ReturnType<typeof setInterval> | null = null;
 	let snapshotTimer: ReturnType<typeof setInterval> | null = null;
 
-	let statusText = $derived(recording ? `grabando (${label})` : "detenido");
+	let statusText = $derived(
+		recording
+			? tr("calib.recording", { label: tr(label === "bot" ? "calib.label.bot" : "calib.label.human") })
+			: tr("calib.stopped")
+	);
 	let durationLabel = $derived(`${(durationMs / 1000).toFixed(1)} s`);
-	let sampleLabel = $derived(`${samples.length} muestras`);
+	let sampleLabel = $derived(tr("recorder.count.samples", { count: samples.length }));
 
 	function onSamplesTick(): void {
 		const pts = getRecentPoints(lastSeq);
@@ -152,9 +137,9 @@
 		durationMs = Date.now() - startedAtMs;
 		snapshots.push({
 			t: Date.now(),
-			score: getVerdict().score,
-			features: getMouseFeatures(),
-			signalScores: getSignalScores()
+			score: live.verdict.score,
+			features: live.features,
+			signalScores: live.scores
 		});
 	}
 
@@ -232,11 +217,11 @@
 </script>
 
 <section class="cp-section">
-	<h3 class="cp-title">Medidas</h3>
+	<h3 class="cp-title">{tr("calib.measures")}</h3>
 	<dl class="cp-measures">
 		{#each MEASURES as m (m.key)}
 			<div class="cp-measure">
-				<dt class="cp-measure-label">{m.label}</dt>
+				<dt class="cp-measure-label">{tr(m.labelKey)}</dt>
 				<dd class="cp-measure-value">{features ? features[m.key].toFixed(2) : "—"}</dd>
 				<div class="cp-bar">
 					<div class="cp-bar-fill" style={features ? `width: ${features[m.key] * 100}%` : "width: 0%"}></div>
@@ -247,18 +232,18 @@
 </section>
 
 <section class="cp-section">
-	<h3 class="cp-title">Grabador</h3>
+	<h3 class="cp-title">{tr("calib.recorder")}</h3>
 	<div class="cp-recorder">
 		<button type="button" class="cp-btn" onclick={() => startRecording("humano")}>
-			Grabar humano
+			{tr("calib.button.human")}
 		</button>
-		<button type="button" class="cp-btn" onclick={() => startRecording("bot")}>Grabar bot</button>
-		<button type="button" class="cp-btn" onclick={stopRecording} disabled={!recording}>Detener</button>
+		<button type="button" class="cp-btn" onclick={() => startRecording("bot")}>{tr("calib.button.bot")}</button>
+		<button type="button" class="cp-btn" onclick={stopRecording} disabled={!recording}>{tr("calib.button.stop")}</button>
 		<button type="button" class="cp-btn" onclick={exportRecording} disabled={recording || samples.length === 0}>
-			Exportar JSON
+			{tr("calib.button.export")}
 		</button>
 	</div>
-	<p class="cp-status">Estado: {statusText} · {durationLabel} · {sampleLabel}</p>
+	<p class="cp-status">{tr("calib.status", { status: statusText, duration: durationLabel, samples: sampleLabel })}</p>
 </section>
 
 <style>

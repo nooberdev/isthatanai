@@ -1,4 +1,8 @@
+<script lang="ts">
+	import { tr } from "#lib/i18n";
+</script>
+
 <section class="section">
-	<h2 class="section-title">Escribir</h2>
-	<p class="section-body">Pendiente: protocolo de escritura y análisis de ritmo en la próxima etapa.</p>
+	<h2 class="section-title">{tr("section.typing.title")}</h2>
+	<p class="section-body">{tr("section.typing.body")}</p>
 </section>

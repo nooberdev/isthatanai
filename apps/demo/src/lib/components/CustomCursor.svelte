@@ -3,10 +3,9 @@
 	// tres fondos y sobre el texto. Solo se activa con puntero fino (no táctil).
 	let { enabled = true }: { enabled?: boolean } = $props();
 
-	let x = $state(0);
-	let y = $state(0);
 	let visible = $state(false);
 	let active = $state(false);
+	let cursorEl = $state<HTMLDivElement | null>(null);
 
 	$effect(() => {
 		if (typeof window === "undefined" || typeof document === "undefined") return;
@@ -20,12 +19,19 @@
 		active = true;
 		document.documentElement.classList.add("has-custom-cursor");
 
+		// El movimiento es molto frecuente: se escribe directamente en el DOM
+		// para no recalcular plantillas reactivas en cada evento. `visible` solo
+		// cambia en la primera aparición y al salir/blur.
+		let shown = false;
 		const move = (e: PointerEvent) => {
-			x = e.clientX;
-			y = e.clientY;
-			visible = true;
+			if (cursorEl) cursorEl.style.transform = `translate3d(${e.clientX}px, ${e.clientY}px, 0)`;
+			if (!shown) {
+				shown = true;
+				visible = true;
+			}
 		};
 		const leave = () => {
+			shown = false;
 			visible = false;
 		};
 
@@ -44,9 +50,10 @@
 
 {#if active}
 	<div
+		bind:this={cursorEl}
 		class="custom-cursor"
 		class:is-visible={visible}
-		style="transform: translate3d({x}px, {y}px, 0)"
+		style="transform: translate3d(0px, 0px, 0)"
 		aria-hidden="true"
 	>
 		<svg viewBox="0 0 7 7" width="14" height="14" shape-rendering="crispEdges">
@@ -68,6 +75,8 @@
 		height: 0;
 		pointer-events: none;
 		opacity: 0;
+		/* Se transforma en cada pointermove: capa propia, sin repintados. */
+		will-change: transform;
 	}
 
 	.custom-cursor.is-visible {

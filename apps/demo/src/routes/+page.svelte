@@ -5,10 +5,8 @@
 		type ClickSample,
 		type InputSample,
 		type KeySample,
-		type MouseFeatures,
 		type PointerSample,
-		type ScrollSample,
-		type Verdict
+		type ScrollSample
 	} from "is-that-an-ai";
 	import CentralWord from "#lib/components/CentralWord.svelte";
 	import TrailCanvas from "#lib/components/TrailCanvas.svelte";
@@ -23,22 +21,14 @@
 	import TouchTest from "#lib/components/sections/TouchTest.svelte";
 	import AttentionTest from "#lib/components/sections/AttentionTest.svelte";
 	import Breakdown from "#lib/components/sections/Breakdown.svelte";
-	import BotSimulator from "#lib/components/sections/BotSimulator.svelte";
 	import Recorder from "#lib/components/sections/Recorder.svelte";
 	import Settings from "#lib/components/sections/Settings.svelte";
+	import type { SessionRecord } from "#lib/lab/session";
 	import type { VerdictState } from "#lib/motion/verdict.svelte";
 	import { getCursorPos, setCursorPos } from "#lib/motion/cursor";
 	import { setupSectionReveal } from "#lib/motion/reveal";
-
-	// Forma estructural de las señales que expone la librería (una por señal,
-	// null cuando no hay evidencia). Se declara aquí para no depender de un tipo
-	// con nombre y mantener el acoplamiento solo a la forma del valor.
-	interface SignalScores {
-		mouse: number | null;
-		keyboard: number | null;
-		click: number | null;
-		scroll: number | null;
-	}
+	import { live } from "#lib/detector/live.svelte";
+	import { i18n, tr, type DemoTranslationKey } from "#lib/i18n";
 
 	const STATE_COLOR: Record<VerdictState, string> = {
 		midiendo: "var(--color-verdict-midiendo)",
@@ -46,11 +36,11 @@
 		ia: "var(--color-verdict-ia)"
 	};
 
-	// Textos de reserva de la Etapa 3: se usan solo si la librería no da razones.
-	const FALLBACK_REASON: Record<VerdictState, string> = {
-		midiendo: "esperando movimiento",
-		humano: "movimiento natural, ritmo irregular",
-		ia: "trayectoria sintética, ritmo uniforme"
+	// Claves de reserva de la Etapa 3: se usan solo si la librería no da razones.
+	const FALLBACK_REASON_KEY: Record<VerdictState, DemoTranslationKey> = {
+		midiendo: "reason.measuring",
+		humano: "reason.human",
+		ia: "reason.ai"
 	};
 
 	// Números de demostración para los estados forzados (?estado= o panel).
@@ -61,11 +51,19 @@
 	};
 
 	// Etiqueta de pantalla (el estado interno sigue siendo "ia" y el URL ?estado=ia).
-	const WORD: Record<VerdictState, string> = {
-		midiendo: "MIDIENDO",
-		humano: "HUMANO",
-		ia: "AGENTE"
+	const WORD_KEY: Record<VerdictState, DemoTranslationKey> = {
+		midiendo: "word.measuring",
+		humano: "word.human",
+		ia: "word.ai"
 	};
+
+	function wordFor(state: VerdictState): string {
+		return tr(WORD_KEY[state]);
+	}
+
+	function fallbackReasonFor(state: VerdictState): string {
+		return tr(FALLBACK_REASON_KEY[state]);
+	}
 
 	// Estado de la librería -> estado visual de la demo.
 	const LIB_TO_STATE: Record<string, VerdictState> = {
@@ -112,16 +110,10 @@
 	// Instancia única, creada en onMount (nunca a nivel de módulo: SSR-safe).
 	let detector = $state<IsThatAnAI | null>(null);
 
-	// Veredicto REAL de la librería. onVerdict avisa cambios de estado y el
-	// sondeo a 4 Hz mantiene score/confidence/reasons/doubt al día.
-	let libVerdict = $state<Verdict>({
-		state: "measuring",
-		score: null,
-		confidence: 0,
-		doubt: 0,
-		reasons: []
-	});
-	let libState = $state<VerdictState>("midiendo");
+	// Veredicto REAL de la librería, leído del sondeo compartido (160 ms).
+	// onVerdict fuerza una lectura inmediata al cambiar de estado.
+	let libVerdict = $derived(live.verdict);
+	let libState = $derived(stateFromLib(live.verdict.state));
 
 	// Overrides explícitos de la demo: ?estado=... gana siempre (capturas);
 	// los botones del panel son un override manual cuando no hay URL.
@@ -132,15 +124,16 @@
 	let trailEnabled = $state(true);
 	let cursorEnabled = $state(true);
 
+	// Sesión grabada/importada, compartida por el grabador y el visualizador.
+	let recordedSession = $state<SessionRecord | null>(null);
+	function setRecordedSession(next: SessionRecord | null): void {
+		recordedSession = next;
+	}
+
 	let effectiveState = $derived(urlOverride ?? manualOverride ?? libState);
 
 	function setManualOverride(s: VerdictState): void {
 		manualOverride = s;
-	}
-
-	function applyVerdict(v: Verdict): void {
-		libVerdict = v;
-		libState = stateFromLib(v.state);
 	}
 
 	// Reinicio en caliente: la misma instancia se detiene y arranca; stop()
@@ -152,46 +145,13 @@
 			d.stop();
 			d.start();
 		}
-		applyVerdict({ state: "measuring", score: null, confidence: 0, doubt: 0, reasons: [] });
+		live.pump();
 	}
 
-	// El panel necesita un objeto aunque todavía no haya instancia.
-	function readStats() {
-		const s = detector?.getStats();
-		return {
-			sampleCount: s?.sampleCount ?? 0,
-			droppedCount: s?.droppedCount ?? 0,
-			eventsPerSecond: s?.eventsPerSecond ?? 0,
-			bufferFill: s?.bufferFill ?? 0,
-			trustedRatio: s?.trustedRatio ?? 0,
-			lastEventAt: s?.lastEventAt ?? 0,
-			clickCount: s?.clickCount ?? 0,
-			scrollCount: s?.scrollCount ?? 0,
-			keyCount: s?.keyCount ?? 0,
-			inputCount: s?.inputCount ?? 0
-		};
-	}
-
-	function readVerdict(): Verdict {
-		return libVerdict;
-	}
-
-	// Sondeadores para DevPanel (calibración): usamos la instancia única.
-	function readMouseFeatures(): MouseFeatures | null {
-		return detector?.getMouseFeatures() ?? null;
-	}
-
+	// Getters incrementales por seq: los usa el grabador (DevPanel y Recorder),
+	// que necesita TODAS las muestras nuevas, no solo la ventana reciente.
 	function readRecentPoints(sinceSeq?: number): PointerSample[] {
 		return detector ? detector.getRecentPoints(sinceSeq) : [];
-	}
-
-	function readSignalScores(): SignalScores {
-		return detector?.getSignalScores() ?? {
-			mouse: null,
-			keyboard: null,
-			click: null,
-			scroll: null
-		};
 	}
 
 	function readRecentClicks(sinceSeq?: number): ClickSample[] {
@@ -222,10 +182,10 @@
 	);
 	let reasonText = $derived(
 		isForced
-			? FALLBACK_REASON[effectiveState]
+			? fallbackReasonFor(effectiveState)
 			: libVerdict.reasons.length > 0
 				? libVerdict.reasons[0]
-				: FALLBACK_REASON[effectiveState]
+				: fallbackReasonFor(effectiveState)
 	);
 
 	// La duda llega con cada sondeo (4 Hz) y se aplica al MISMO veredicto:
@@ -240,16 +200,6 @@
 
 	// La línea usa exactamente el color del hero, con el mismo matiz de duda.
 	let lineColor = $derived(stateColor(effectiveState, doubt));
-
-	// Sondeo ~4 Hz: onVerdict solo dispara al cambiar el estado.
-	$effect(() => {
-		const d = detector;
-		if (!d) return;
-		const sync = () => applyVerdict(d.getVerdict());
-		sync();
-		const id = setInterval(sync, 250);
-		return () => clearInterval(id);
-	});
 
 	function reduces(): boolean {
 		return (
@@ -285,6 +235,8 @@
 	}
 
 	onMount(() => {
+		// El idioma del sistema se resuelve aquí, nunca al importar el módulo.
+		i18n.init();
 		urlOverride = stateFromUrl();
 		setupSectionReveal();
 
@@ -299,11 +251,15 @@
 		updateScroll();
 
 		// Única instancia de la librería: se crea y arranca aquí, nunca en el módulo.
-		const instance = new IsThatAnAI({ mouse: { bufferSize: 400, maxAgeMs: 4000 } });
+		const instance = new IsThatAnAI({
+			mouse: { bufferSize: 400, maxAgeMs: 4000 },
+			locale: i18n.locale
+		});
 		detector = instance;
+		i18n.attach(instance);
 		instance.start();
-		applyVerdict(instance.getVerdict());
-		const offVerdict = instance.onVerdict(applyVerdict);
+		live.connect(instance);
+		const offVerdict = instance.onVerdict(() => live.pump());
 
 		// Este listener es SOLO para posicionar el círculo de reveal (#lib/motion/cursor).
 		// NO es la fuente de datos del trazo: ese viene del colector del detector.
@@ -314,6 +270,8 @@
 
 		return () => {
 			offVerdict();
+			i18n.detach();
+			live.disconnect();
 			window.removeEventListener("scroll", updateScroll);
 			window.removeEventListener("pointermove", onRevealPointer);
 			instance.stop();
@@ -347,7 +305,7 @@
 			{/if}
 		</div>
 		<div class="hero-content">
-			<CentralWord word={WORD[effectiveState]} question={showQuestion} />
+			<CentralWord word={wordFor(effectiveState)} question={showQuestion} />
 			<p class="score-line">
 				<span class="score">{scoreText}</span>
 				<span class="score-reason"> · {reasonText}</span>
@@ -363,9 +321,17 @@
 		<TouchTest />
 		<AttentionTest />
 		<Breakdown />
-		<BotSimulator />
-		<Recorder />
-		<Settings />
+		<Recorder
+			getRecentPoints={readRecentPoints}
+			getRecentClicks={readRecentClicks}
+			getRecentScrolls={readRecentScrolls}
+			getRecentKeys={readRecentKeys}
+			getRecentInputs={readRecentInputs}
+			{detector}
+			session={recordedSession}
+			onSession={setRecordedSession}
+		/>
+		<Settings {detector} />
 	</div>
 </main>
 
@@ -379,11 +345,7 @@
 	<DevPanel
 		currentState={effectiveState}
 		onSetState={setManualOverride}
-		getStats={readStats}
-		getVerdict={readVerdict}
-		getMouseFeatures={readMouseFeatures}
 		getRecentPoints={readRecentPoints}
-		getSignalScores={readSignalScores}
 		getRecentClicks={readRecentClicks}
 		getRecentScrolls={readRecentScrolls}
 		getRecentKeys={readRecentKeys}

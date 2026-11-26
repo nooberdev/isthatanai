@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { extractMouseFeatures, type MouseFeatures } from "../src/features/mouse";
+import { t } from "../src/i18n";
+import { translateReasons } from "../src/i18n/reason-translator";
 import {
   AI_CORE,
   AI_MIN,
@@ -129,7 +131,9 @@ describe("scoreReasons", () => {
 
   it("si ninguna medida de riesgo pasa el umbral devuelve []", () => {
     expect(scoreReasons(featuresHuman())).toEqual([]);
-    expect(scoreReasons(featuresMixed(), 1)).toEqual(["Trayectoria demasiado recta"]);
+    expect(translateReasons(scoreReasons(featuresMixed(), 1), "en")).toEqual([
+      t("reason.mouse.straightnessHigh", "en"),
+    ]);
   });
 });
 

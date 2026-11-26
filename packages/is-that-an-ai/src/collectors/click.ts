@@ -5,15 +5,6 @@
 import type { ClickSample, Collector } from "../types";
 import { NumericRingBuffer } from "../utils/numeric-ring-buffer";
 
-/** Forma mínima y opcional de un PointerEvent (sirve para targets falsos). */
-interface ClickLike {
-  clientX?: number;
-  clientY?: number;
-  timeStamp?: number;
-  button?: number;
-  isTrusted?: boolean;
-}
-
 export interface ClickCollectorOptions {
   /** Por defecto `window`, resuelto solo al llamar a la función. */
   target?: EventTarget;
@@ -42,8 +33,23 @@ const BUTTON = 5;
 const TRUSTED = 6;
 const FIELDS = 7;
 
-function numeric(value: number | undefined, fallback: number): number {
+/** Lectura defensiva: un getter que lanza se trata como propiedad ausente. */
+function read(object: object, key: string): unknown {
+  try {
+    return (object as Record<string, unknown>)[key];
+  } catch {
+    return undefined;
+  }
+}
+
+function numeric(object: object, key: string, fallback: number): number {
+  const value = read(object, key);
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+/** Solo `true` cuenta como confiable: `1`, `"true"` o un getter hostil no. */
+function trustedOf(object: object): 0 | 1 {
+  return read(object, "isTrusted") === true ? 1 : 0;
 }
 
 function toSample(row: Float64Array): ClickSample {
@@ -69,23 +75,37 @@ export function createClickCollector({
   let lastEventAt = 0;
   const eventTimes: number[] = [];
 
+  function clock(): number | null {
+    try {
+      const value = now();
+      return typeof value === "number" && Number.isFinite(value) ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
   function record(event: Event, kind: 0 | 1): void {
-    const input = event as unknown as ClickLike;
-    const x = numeric(input.clientX, 0);
-    const y = numeric(input.clientY, 0);
-    const t = numeric(input.timeStamp, 0);
-    const button = numeric(input.button, 0);
-    const trusted: 0 | 1 = input.isTrusted ? 1 : 0;
+    if (!attached) return;
+    const input = event as unknown as object;
+    const x = numeric(input, "clientX", 0);
+    const y = numeric(input, "clientY", 0);
+    const t = numeric(input, "timeStamp", 0);
+    const button = numeric(input, "button", 0);
+    const trusted = trustedOf(input);
 
     seq += 1;
     buffer.push(seq, x, y, t, kind, button, trusted);
     lastEventAt = t;
 
     // Un evento = una marca de reloj, sin importar cuántos campos se guardaron.
-    const at = now();
-    eventTimes.push(at);
-    const cutoff = at - 1000;
-    while (eventTimes.length > 0 && eventTimes[0] < cutoff) eventTimes.shift();
+    const at = clock();
+    if (at !== null) {
+      eventTimes.push(at);
+      const cutoff = at - 1000;
+      while (eventTimes.length > 0 && eventTimes[0] < cutoff) {
+        eventTimes.shift();
+      }
+    }
   }
 
   const onDown = (event: Event): void => record(event, 0);
@@ -93,16 +113,24 @@ export function createClickCollector({
 
   function attach(): void {
     if (attached) return;
-    target.addEventListener("pointerdown", onDown, LISTENER_OPTIONS);
-    target.addEventListener("pointerup", onUp, LISTENER_OPTIONS);
     attached = true;
+    try {
+      target.addEventListener("pointerdown", onDown, LISTENER_OPTIONS);
+      target.addEventListener("pointerup", onUp, LISTENER_OPTIONS);
+    } catch {
+      detach();
+    }
   }
 
   function detach(): void {
     if (!attached) return;
-    target.removeEventListener("pointerdown", onDown, LISTENER_OPTIONS);
-    target.removeEventListener("pointerup", onUp, LISTENER_OPTIONS);
     attached = false;
+    try {
+      target.removeEventListener("pointerdown", onDown, LISTENER_OPTIONS);
+      target.removeEventListener("pointerup", onUp, LISTENER_OPTIONS);
+    } catch {
+      // target hostil: no se puede hacer más.
+    }
   }
 
   return {
@@ -112,7 +140,10 @@ export function createClickCollector({
     getSamples: () => buffer.rows().map(toSample),
     discardOldestBefore: (tMin: number) => buffer.discardOldestBefore(tMin, T),
     eventsSince(cutoff: number): number {
-      while (eventTimes.length > 0 && eventTimes[0] < cutoff) eventTimes.shift();
+      if (typeof cutoff !== "number" || !Number.isFinite(cutoff)) return 0;
+      while (eventTimes.length > 0 && eventTimes[0] < cutoff) {
+        eventTimes.shift();
+      }
       return eventTimes.length;
     },
     clear(): void {

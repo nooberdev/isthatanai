@@ -1,4 +1,8 @@
+<script lang="ts">
+	import { tr } from "#lib/i18n";
+</script>
+
 <section class="section">
-	<h2 class="section-title">Atención</h2>
-	<p class="section-body">Pendiente: indicadores de atención definidos para la próxima etapa.</p>
+	<h2 class="section-title">{tr("section.attention.title")}</h2>
+	<p class="section-body">{tr("section.attention.body")}</p>
 </section>

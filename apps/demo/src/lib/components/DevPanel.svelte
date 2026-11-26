@@ -1,33 +1,20 @@
 <script lang="ts">
 	import type {
 		ClickSample,
-		CollectorStats,
 		InputSample,
 		KeySample,
-		MouseFeatures,
 		PointerSample,
-		ScrollSample,
-		Verdict
+		ScrollSample
 	} from "is-that-an-ai";
 	import type { VerdictState } from "#lib/motion/verdict.svelte";
 	import CalibrationPanel from "#lib/components/CalibrationPanel.svelte";
-
-	// Forma estructural de las señales (una por señal, null sin evidencia).
-	interface SignalScores {
-		mouse: number | null;
-		keyboard: number | null;
-		click: number | null;
-		scroll: number | null;
-	}
+	import { live } from "#lib/detector/live.svelte";
+	import { tr, type DemoTranslationKey } from "#lib/i18n";
 
 	let {
 		currentState,
 		onSetState,
-		getStats,
-		getVerdict,
-		getMouseFeatures,
 		getRecentPoints,
-		getSignalScores,
 		getRecentClicks,
 		getRecentScrolls,
 		getRecentKeys,
@@ -36,11 +23,7 @@
 	}: {
 		currentState: VerdictState;
 		onSetState: (s: VerdictState) => void;
-		getStats: () => CollectorStats;
-		getVerdict: () => Verdict;
-		getMouseFeatures: () => MouseFeatures | null;
 		getRecentPoints: (sinceSeq?: number) => PointerSample[];
-		getSignalScores: () => SignalScores;
 		getRecentClicks: (sinceSeq?: number) => ClickSample[];
 		getRecentScrolls: (sinceSeq?: number) => ScrollSample[];
 		getRecentKeys: (sinceSeq?: number) => KeySample[];
@@ -49,9 +32,10 @@
 	} = $props();
 
 	let open = $state(false);
-	let stats = $state<CollectorStats | null>(null);
-	let verdict = $state<Verdict | null>(null);
-	let signalScores = $state<SignalScores | null>(null);
+	// Leídos del sondeo compartido; el panel solo existe en desarrollo.
+	let stats = $derived(live.stats);
+	let verdict = $derived(live.verdict);
+	let signalScores = $derived(live.scores);
 
 	function setState(s: VerdictState): void {
 		onSetState(s);
@@ -59,21 +43,20 @@
 	}
 
 	// Etiquetas de la demo (currentState) y de la librería (verdict.state).
-	const STATE_WORD: Record<VerdictState, string> = {
-		midiendo: "MIDIENDO",
-		humano: "HUMANO",
-		ia: "AGENTE"
+	const STATE_WORD_KEY: Record<VerdictState, DemoTranslationKey> = {
+		midiendo: "word.measuring",
+		humano: "word.human",
+		ia: "word.ai"
 	};
 
-	const LIB_WORD: Record<string, string> = {
-		measuring: "MIDIENDO",
-		human: "HUMANO",
-		ai: "AGENTE"
+	const LIB_WORD_KEY: Record<string, DemoTranslationKey> = {
+		measuring: "word.measuring",
+		human: "word.human",
+		ai: "word.ai"
 	};
 
 	function verdictWord(state: string | undefined): string {
-		if (!state) return "MIDIENDO";
-		return LIB_WORD[state] ?? "MIDIENDO";
+		return tr(state ? (LIB_WORD_KEY[state] ?? "word.measuring") : "word.measuring");
 	}
 
 	// Panel mínimo para revisar las animaciones sin la librería real.
@@ -97,78 +80,66 @@
 		return () => document.removeEventListener("keydown", onKey);
 	});
 
-	// Solo mientras el panel está abierto: refresco ~4 veces por segundo.
-	$effect(() => {
-		if (!open || !import.meta.env.DEV) return;
-		const refresh = () => {
-			stats = getStats();
-			verdict = getVerdict();
-			signalScores = getSignalScores();
-		};
-		refresh();
-		const id = setInterval(refresh, 250);
-		return () => clearInterval(id);
-	});
 </script>
 
 {#if import.meta.env.DEV}
 	{#if open}
-		<div class="dev-panel" role="dialog" aria-label="Panel de desarrollo">
-			<p class="dev-panel__status">Estado actual: {STATE_WORD[currentState]}</p>
+		<div class="dev-panel" role="dialog" aria-label={tr("dev.dialog.aria")}>
+			<p class="dev-panel__status">{tr("dev.status", { state: tr(STATE_WORD_KEY[currentState]) })}</p>
 			<div class="dev-panel__section">
-				<p class="dev-panel__title">Recolector</p>
+				<p class="dev-panel__title">{tr("dev.collector")}</p>
 				<dl class="dev-panel__stats">
 					<div class="dev-panel__row">
-						<dt>Muestras</dt>
+						<dt>{tr("dev.dt.samples")}</dt>
 						<dd>{stats?.sampleCount ?? 0}</dd>
 					</div>
 					<div class="dev-panel__row">
-						<dt>Clics</dt>
+						<dt>{tr("dev.dt.clicks")}</dt>
 						<dd>{stats?.clickCount ?? 0}</dd>
 					</div>
 					<div class="dev-panel__row">
-						<dt>Scroll</dt>
+						<dt>{tr("dev.dt.scroll")}</dt>
 						<dd>{stats?.scrollCount ?? 0}</dd>
 					</div>
 					<div class="dev-panel__row">
-						<dt>Teclas</dt>
+						<dt>{tr("dev.dt.keys")}</dt>
 						<dd>{stats?.keyCount ?? 0}</dd>
 					</div>
 					<div class="dev-panel__row">
-						<dt>Inputs</dt>
+						<dt>{tr("dev.dt.inputs")}</dt>
 						<dd>{stats?.inputCount ?? 0}</dd>
 					</div>
 					<div class="dev-panel__row">
-						<dt>Eventos/s</dt>
+						<dt>{tr("dev.dt.events")}</dt>
 						<dd>{(stats?.eventsPerSecond ?? 0).toFixed(1)}</dd>
 					</div>
 					<div class="dev-panel__row">
-						<dt>Buffer</dt>
+						<dt>{tr("dev.dt.buffer")}</dt>
 						<dd>{Math.round((stats?.bufferFill ?? 0) * 100)}%</dd>
 					</div>
 					<div class="dev-panel__row">
-						<dt>Confiables</dt>
+						<dt>{tr("dev.dt.trusted")}</dt>
 						<dd>{Math.round((stats?.trustedRatio ?? 0) * 100)}%</dd>
 					</div>
 				</dl>
 			</div>
 			<div class="dev-panel__section">
-				<p class="dev-panel__title">Veredicto</p>
+				<p class="dev-panel__title">{tr("dev.verdict")}</p>
 				<dl class="dev-panel__stats">
 					<div class="dev-panel__row">
-						<dt>Estado</dt>
+						<dt>{tr("dev.dt.state")}</dt>
 						<dd>{verdictWord(verdict?.state)}</dd>
 					</div>
 					<div class="dev-panel__row">
-						<dt>Score</dt>
+						<dt>{tr("dev.dt.score")}</dt>
 						<dd>{verdict && verdict.score !== null ? verdict.score.toFixed(2) : "—"}</dd>
 					</div>
 					<div class="dev-panel__row">
-						<dt>Confianza</dt>
+						<dt>{tr("dev.dt.confidence")}</dt>
 						<dd>{Math.round((verdict?.confidence ?? 0) * 100)}%</dd>
 					</div>
 					<div class="dev-panel__row">
-						<dt>Duda</dt>
+						<dt>{tr("dev.dt.doubt")}</dt>
 						<dd>{Math.round((verdict?.doubt ?? 0) * 100)}%</dd>
 					</div>
 				</dl>
@@ -180,45 +151,42 @@
 					</ul>
 				{/if}
 				{#if forced}
-					<p class="dev-panel__forced">estado forzado por demo</p>
+					<p class="dev-panel__forced">{tr("dev.forced")}</p>
 				{/if}
 				<div class="dev-panel__signals">
-					<p class="dev-panel__title">Señales</p>
+					<p class="dev-panel__title">{tr("dev.signals")}</p>
 					<dl class="dev-panel__stats">
 						<div class="dev-panel__row">
-							<dt>Mouse</dt>
+							<dt>{tr("dev.dt.mouse")}</dt>
 							<dd>{signalScores && signalScores.mouse !== null ? signalScores.mouse.toFixed(2) : "—"}</dd>
 						</div>
 						<div class="dev-panel__row">
-							<dt>Teclado</dt>
+							<dt>{tr("dev.dt.keyboard")}</dt>
 							<dd>{signalScores && signalScores.keyboard !== null ? signalScores.keyboard.toFixed(2) : "—"}</dd>
 						</div>
 						<div class="dev-panel__row">
-							<dt>Clic</dt>
+							<dt>{tr("dev.dt.click")}</dt>
 							<dd>{signalScores && signalScores.click !== null ? signalScores.click.toFixed(2) : "—"}</dd>
 						</div>
 						<div class="dev-panel__row">
-							<dt>Scroll</dt>
+							<dt>{tr("dev.dt.scroll")}</dt>
 							<dd>{signalScores && signalScores.scroll !== null ? signalScores.scroll.toFixed(2) : "—"}</dd>
 						</div>
 					</dl>
 				</div>
 			</div>
 			<CalibrationPanel
-				getMouseFeatures={getMouseFeatures}
 				getRecentPoints={getRecentPoints}
-				getVerdict={getVerdict}
-				getSignalScores={getSignalScores}
 				getRecentClicks={getRecentClicks}
 				getRecentScrolls={getRecentScrolls}
 				getRecentKeys={getRecentKeys}
 				getRecentInputs={getRecentInputs}
 			/>
 		<div class="dev-panel__actions">
-				<button type="button" class="dev-panel__btn" onclick={() => setState("midiendo")}>midiendo</button>
-				<button type="button" class="dev-panel__btn" onclick={() => setState("humano")}>humano</button>
-				<button type="button" class="dev-panel__btn" onclick={() => setState("ia")}>AGENTE</button>
-				<button type="button" class="dev-panel__btn" onclick={() => (open = false)}>Cerrar</button>
+				<button type="button" class="dev-panel__btn" onclick={() => setState("midiendo")}>{tr("label.measuring")}</button>
+				<button type="button" class="dev-panel__btn" onclick={() => setState("humano")}>{tr("label.human")}</button>
+				<button type="button" class="dev-panel__btn" onclick={() => setState("ia")}>{tr("word.ai")}</button>
+				<button type="button" class="dev-panel__btn" onclick={() => (open = false)}>{tr("dev.close")}</button>
 			</div>
 		</div>
 	{/if}

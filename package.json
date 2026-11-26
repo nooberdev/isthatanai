@@ -10,7 +10,8 @@
     "build": "bun run --filter=is-that-an-ai build",
     "test": "bun test",
     "typecheck": "bun run --filter=is-that-an-ai typecheck && bun run --filter=demo typecheck",
-    "lint": "biome check ."
+    "lint": "biome check .",
+    "check:package": "bun tools/check-bundle.ts && bun run --filter=is-that-an-ai build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.9",

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack } from "svelte";
+	import { tr } from "#lib/i18n";
 
 	let { word = '', question = false }: { word: string; question?: boolean } = $props();
 
@@ -110,7 +111,7 @@
 	class="word"
 	bind:this={rootEl}
 	class:no-motion={reduceMotion}
-	class:breathing={!reduceMotion && word.toUpperCase() === "MIDIENDO"}
+	class:breathing={!reduceMotion && word.toUpperCase() === tr("word.measuring").toUpperCase()}
 >
 	<span class="word-inner" class:questioning={question}>
 		<span class="word-letters">

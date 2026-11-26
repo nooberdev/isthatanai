@@ -107,6 +107,93 @@ La librería también puede construirse de forma aislada con `bun run --filter=i
 - `dist/index.iife.js` — IIFE minificado, global `IsThatAnAI`, para `<script>`.
 - `dist/*.d.ts` — declaraciones de tipos.
 
+### Uso desde npm
+
+```sh
+bun add is-that-an-ai
+```
+
+```ts
+import { IsThatAnAI } from "is-that-an-ai";
+
+const detector = new IsThatAnAI({ device: "auto" });
+detector.onVerdict((v) => console.log(v.state, v.score));
+detector.start();
+```
+
+El paquete publica `exports` (`.` y `./iife`), `types` y solo la carpeta `dist` en `files`.
+
+### Uso con etiqueta `<script>` (sin bundler)
+
+Tras `bun run build`, abre `examples/script-tag.html`. El bundle IIFE expone el global
+`IsThatAnAI`; la clase se usa como `new IsThatAnAI.IsThatAnAI()`:
+
+```html
+<script src="dist/index.iife.js"></script>
+<script>
+  const detector = new IsThatAnAI.IsThatAnAI();
+  detector.start();
+</script>
+```
+
+### Idiomas (i18n)
+
+La librería incluye 12 idiomas: `en`, `es`, `fr`, `de`, `pt`, `it`, `nl`, `sv`,
+`pl`, `ja`, `ko` y `zh`. El idioma por defecto es **inglés** y se detecta el del
+sistema al llamar a `start()`; si no se puede detectar, se usa `en`.
+
+```ts
+import { IsThatAnAI, detectLocale, t, type Locale } from "is-that-an-ai";
+
+const detector = new IsThatAnAI({ locale: "auto" });
+detector.start();
+detector.getLocale(); // p. ej. "es"
+detector.configure({ locale: "fr" }); // cambia también las razones del veredicto
+
+detectLocale("zh-TW"); // "zh"
+t("reason.mouse.teleport", "de"); // razón traducida
+```
+
+Las razones de `getVerdict()` y `onVerdict()` ya llegan en el idioma activo. La
+detección es SSR-safe: `navigator` solo se consulta en tiempo de ejecución.
+
+### API avanzada (Etapa 11)
+
+```ts
+import {
+  IsThatAnAI,
+  autoStart,
+  installGlobal,
+  createReactDetector,
+  createSvelteDetector,
+  createVueDetector,
+} from "is-that-an-ai";
+
+const detector = new IsThatAnAI({ debug: false, customEvent: true });
+detector.pause(); // congela la evaluación, mantiene los colectores
+detector.resume();
+detector.onThreshold(0.55, (score) => console.log("cruzó 0.55", score));
+detector.disableSignals(["scroll"]);
+detector.enableSignals(["scroll"]);
+
+autoStart(); // solo en navegador; null en SSR
+installGlobal(); // window.isThatAnAI
+```
+
+Con `customEvent: true`, cada cambio de estado emite `CustomEvent("isthatanai")`
+en `document`. Los adaptadores `createReactDetector`, `createSvelteDetector` y
+`createVueDetector` son ayudantes de ciclo de vida sin dependencias de framework.
+
+### Tamaño
+
+Verificado con `bun tools/check-bundle.ts` (tras `bun run build`): IIFE minificado
+**198,04 KB** (lo que carga el navegador) y ESM sin minificar **346,38 KB**.
+El crecimiento respecto a versiones anteriores viene de los 12 diccionarios de
+idiomas, las 71 medidas del checklist, los colectores táctiles/atención y el
+endurecimiento anti-ataques; el límite del IIFE se elevó a 250 KB. Las medidas
+avanzadas son opt-in y no se activan por defecto.
+El script comprueba también el global IIFE y los exports ESM.
+
 ## Reglas del proyecto
 
 1. **Sin backend y sin red:** la librería no hace peticiones de red (fetch/XHR/WebSocket).

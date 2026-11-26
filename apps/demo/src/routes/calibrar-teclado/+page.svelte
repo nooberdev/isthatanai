@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { IsThatAnAI, type InputSample, type KeySample } from "is-that-an-ai";
+	import { i18n, tr } from "#lib/i18n";
 
 	// Ruta oculta de calibración. AVISO: el sitio es estático (prerender = true),
 	// así que esta clave NO es seguridad: solo mantiene la herramienta "no
@@ -8,9 +9,8 @@
 	// enlaza desde ningún menú ni se indexa.
 	const SECRET = "calibra-2026";
 
-	// Párrafo objetivo fijo, en español real. Nunca se guarda ni se exporta.
-	const TARGET =
-		"Hoy salí temprano, caminé hasta la esquina y compré pan recién horneado. Mi hermana me esperaba en la cocina con una taza de café, y charlamos hasta que el reloj marcó las nueve.";
+	// Párrafo objetivo localizado. Nunca se guarda ni se exporta.
+	let target = $derived(tr("calibpage.target"));
 
 	const LONG_PAUSE_MS = 1000;
 	const CHARS_PER_WORD = 5;
@@ -42,7 +42,7 @@
 	let keyboardScore = $state<number | null>(null);
 
 	let typedChars = $derived(typed.length);
-	let targetChars = TARGET.length;
+	let targetChars = $derived(target.length);
 	let elapsedMs = $derived(startedAtMs === null ? 0 : Math.max(0, nowMs - startedAtMs));
 
 	let keyDowns = $derived(keyTimeline.reduce((n, k) => n + (k.kind === 0 ? 1 : 0), 0));
@@ -52,7 +52,7 @@
 	let longPauses = $derived(countLongPauses(keyTimeline));
 	let pasteCount = $derived(inputTimeline.reduce((n, i) => n + (i.inputType === 1 ? 1 : 0), 0));
 
-	let accuracy = $derived(computeAccuracy(typed, TARGET));
+	let accuracy = $derived(computeAccuracy(typed, target));
 	let wpm = $derived(computeWpm(typedChars, elapsedMs));
 
 	let wpmText = $derived(typedChars === 0 ? "—" : wpm.toFixed(1));
@@ -60,7 +60,9 @@
 	let timeText = $derived(`${(elapsedMs / 1000).toFixed(1)} s`);
 	let scoreText = $derived(keyboardScore === null ? "—" : keyboardScore.toFixed(2));
 	let signalText = $derived(
-		keyboardScore === null ? "Sin señal suficiente" : "Señal suficiente"
+		keyboardScore === null
+			? tr("calibpage.signal.insufficient")
+			: tr("calibpage.signal.sufficient")
 	);
 
 	function countLongPauses(keys: KeySample[]): number {
@@ -114,7 +116,7 @@
 	function onTypingInput(event: Event): void {
 		const value = (event.currentTarget as HTMLTextAreaElement).value;
 		if (startedAtMs === null) startedAtMs = Date.now();
-		if (completedAtMs === null && value.length >= TARGET.length) completedAtMs = Date.now();
+		if (completedAtMs === null && value.length >= target.length) completedAtMs = Date.now();
 		nowMs = Date.now();
 	}
 
@@ -176,7 +178,7 @@
 			durationMs: startedAtMs === null ? 0 : Math.max(0, ended - startedAtMs),
 			wpm: Number(wpm.toFixed(2)),
 			accuracy: Number(accuracy.toFixed(4)),
-			targetChars: TARGET.length,
+			targetChars: target.length,
 			typedChars: typed.length,
 			keys,
 			inputs,
@@ -197,13 +199,15 @@
 	}
 
 	onMount(() => {
+		// Idioma del sistema solo en tiempo de ejecución, como en la ruta principal.
+		i18n.init();
 		const params = new URLSearchParams(window.location.search);
 		authorized = params.get("clave") === SECRET;
 		if (!authorized) return;
 
 		nowMs = Date.now();
 		// Instancia propia: no toca la de la ruta principal.
-		const instance = new IsThatAnAI();
+		const instance = new IsThatAnAI({ locale: i18n.locale });
 		detector = instance;
 		instance.start();
 		const timer = setInterval(sync, POLL_MS);
@@ -218,7 +222,7 @@
 </script>
 
 <svelte:head>
-	<title>{authorized ? "Calibrar teclado" : "No disponible"}</title>
+	<title>{authorized ? tr("calibpage.title") : tr("calibpage.unavailable")}</title>
 	<meta name="robots" content="noindex" />
 </svelte:head>
 
@@ -227,18 +231,18 @@
 		<div
 			class="mx-auto box-border w-full max-w-2xl rounded-lg border border-border bg-card px-5 py-6 sm:px-7 sm:py-7"
 		>
-			<h1 class="text-xl font-semibold tracking-tight sm:text-2xl">Calibrar teclado</h1>
+			<h1 class="text-xl font-semibold tracking-tight sm:text-2xl">{tr("calibpage.title")}</h1>
 			<p class="mt-1.5 text-sm text-muted-foreground">
-				Escribe el texto objetivo sin pegarlo; solo se miden tiempos y ritmo.
+				{tr("calibpage.intro")}
 			</p>
 
 			<p class="mt-5 break-words border-l-2 border-border pl-3 text-sm leading-relaxed">
-				{TARGET}
+				{target}
 			</p>
 
 			<div class="mt-6 space-y-5">
 				<div class="min-w-0">
-					<label for="cal-typing" class="block text-sm font-medium">Tu escritura</label>
+					<label for="cal-typing" class="block text-sm font-medium">{tr("calibpage.typing")}</label>
 					<textarea
 						id="cal-typing"
 						rows="4"
@@ -253,41 +257,41 @@
 
 				<dl class="flex flex-wrap gap-x-6 gap-y-3 border-t border-border pt-4">
 					<div class="min-w-0">
-						<dt class="text-xs text-muted-foreground">Tiempo</dt>
+						<dt class="text-xs text-muted-foreground">{tr("calibpage.time")}</dt>
 						<dd class="text-base font-medium tabular-nums">{timeText}</dd>
 					</div>
 					<div class="min-w-0">
-						<dt class="text-xs text-muted-foreground">WPM</dt>
+						<dt class="text-xs text-muted-foreground">{tr("calibpage.wpm")}</dt>
 						<dd class="text-base font-medium tabular-nums">{wpmText}</dd>
 					</div>
 					<div class="min-w-0">
-						<dt class="text-xs text-muted-foreground">Precisión</dt>
+						<dt class="text-xs text-muted-foreground">{tr("calibpage.accuracy")}</dt>
 						<dd class="text-base font-medium tabular-nums">{accuracyText}</dd>
 					</div>
 					<div class="min-w-0">
-						<dt class="text-xs text-muted-foreground">Teclas</dt>
+						<dt class="text-xs text-muted-foreground">{tr("calibpage.keys")}</dt>
 						<dd class="text-base font-medium tabular-nums">{keyDowns}</dd>
 					</div>
 					<div class="min-w-0">
-						<dt class="text-xs text-muted-foreground">Correcciones</dt>
+						<dt class="text-xs text-muted-foreground">{tr("calibpage.corrections")}</dt>
 						<dd class="text-base font-medium tabular-nums">{backspaces}</dd>
 					</div>
 					<div class="min-w-0">
-						<dt class="text-xs text-muted-foreground">Pausas largas</dt>
+						<dt class="text-xs text-muted-foreground">{tr("calibpage.longPauses")}</dt>
 						<dd class="text-base font-medium tabular-nums">{longPauses}</dd>
 					</div>
 				</dl>
 
 				<p class="text-sm">
-					<span class="text-muted-foreground">Score de teclado</span>
+					<span class="text-muted-foreground">{tr("calibpage.score")}</span>
 					<span class="ml-2 font-medium tabular-nums">{scoreText}</span>
 					<span class="text-muted-foreground"> · {signalText}</span>
 				</p>
 
 				<div class="min-w-0">
-					<label for="cal-paste" class="block text-sm font-medium">Pegado opcional</label>
+					<label for="cal-paste" class="block text-sm font-medium">{tr("calibpage.paste")}</label>
 					<p class="mt-1 text-xs text-muted-foreground">
-						Pega aquí el mismo texto con Ctrl+V o desde el menú contextual.
+						{tr("calibpage.paste.hint")}
 					</p>
 					<textarea
 						id="cal-paste"
@@ -296,7 +300,7 @@
 						class="mt-2 block w-full min-w-0 box-border resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
 					></textarea>
 					<p class="mt-1.5 text-xs text-muted-foreground">
-						Pegados detectados: {pasteCount}
+						{tr("calibpage.pastes", { count: pasteCount })}
 					</p>
 				</div>
 
@@ -306,14 +310,14 @@
 						onclick={reset}
 						class="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 					>
-						Reiniciar prueba
+						{tr("calibpage.button.reset")}
 					</button>
 					<button
 						type="button"
 						onclick={exportJson}
 						class="rounded-md border border-primary bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 					>
-						Exportar JSON
+						{tr("calibpage.button.export")}
 					</button>
 				</div>
 			</div>
@@ -321,6 +325,6 @@
 	</main>
 {:else}
 	<main class="grid min-h-dvh place-items-center px-4">
-		<p class="text-sm text-muted-foreground">No disponible.</p>
+		<p class="text-sm text-muted-foreground">{tr("calibpage.unavailable")}.</p>
 	</main>
 {/if}

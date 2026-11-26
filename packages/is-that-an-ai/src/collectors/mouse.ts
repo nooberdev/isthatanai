@@ -4,16 +4,6 @@
 import type { Collector, PointerSample } from "../types";
 import { RingBuffer } from "../utils/ring-buffer";
 
-/** Forma mínima y opcional de un PointerEvent (sirve para targets falsos en tests). */
-interface PointerLike {
-  clientX?: number;
-  clientY?: number;
-  timeStamp?: number;
-  pointerType?: string;
-  isTrusted?: boolean;
-  getCoalescedEvents?: () => PointerLike[];
-}
-
 export interface MouseCollectorOptions {
   /** Por defecto `window`, resuelto solo al llamar a la función (nunca al importar). */
   target?: EventTarget;
@@ -38,11 +28,29 @@ const MOVE_LISTENER_OPTIONS: AddEventListenerOptions = { capture: true, passive:
 // al cruzar la frontera del propio boundary.
 const BOUNDARY_LISTENER_OPTIONS: AddEventListenerOptions = { passive: true };
 
-function numeric(value: number | undefined, fallback: number): number {
+/** Tope de muestras coalesced por evento: un `length` hostil no puede bloquear el hilo. */
+const MAX_COALESCED_EVENTS = 64;
+
+/** Lectura defensiva: un getter que lanza se trata como propiedad ausente. */
+function read(object: object, key: string): unknown {
+  try {
+    return (object as Record<string, unknown>)[key];
+  } catch {
+    return undefined;
+  }
+}
+
+function numeric(object: object, key: string, fallback: number): number {
+  const value = read(object, key);
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-function pointerTypeCode(value: string | undefined): PointerSample["pointerType"] {
+/** Solo `true` cuenta como confiable: `1`, `"true"` o un getter hostil no. */
+function trustedOf(object: object): 0 | 1 {
+  return read(object, "isTrusted") === true ? 1 : 0;
+}
+
+function pointerTypeCode(value: unknown): PointerSample["pointerType"] {
   switch (value) {
     case "mouse":
       return 0;
@@ -79,38 +87,69 @@ export function createMouseCollector({
     buffer.push(seq, x, y, t, kind, pointerType, trusted);
   }
 
-  function record(event: Event, kind: PointerSample["kind"]): void {
-    const input = event as unknown as PointerLike;
-    const x = numeric(input.clientX, 0);
-    const y = numeric(input.clientY, 0);
-    const t = numeric(input.timeStamp, 0);
-    const pointerType = pointerTypeCode(input.pointerType);
-    const trusted: 0 | 1 = input.isTrusted ? 1 : 0;
+  function clock(): number | null {
+    try {
+      const value = now();
+      return typeof value === "number" && Number.isFinite(value) ? value : null;
+    } catch {
+      return null;
+    }
+  }
 
-    const getCoalesced = input.getCoalescedEvents;
-    const coalesced = typeof getCoalesced === "function" ? getCoalesced.call(input) : undefined;
-    if (coalesced && coalesced.length > 0) {
-      for (let i = 0; i < coalesced.length; i += 1) {
+  function recordCoalesced(
+    input: object,
+    x: number,
+    y: number,
+    t: number,
+    kind: PointerSample["kind"],
+    pointerType: PointerSample["pointerType"],
+    trusted: 0 | 1,
+  ): void {
+    const getCoalesced = read(input, "getCoalescedEvents");
+    if (typeof getCoalesced !== "function") return;
+    try {
+      const coalesced = getCoalesced.call(input) as unknown;
+      if (!Array.isArray(coalesced)) return;
+      const count = Math.min(coalesced.length, MAX_COALESCED_EVENTS);
+      for (let i = 0; i < count; i += 1) {
         const item = coalesced[i];
+        if (!item || typeof item !== "object") continue;
+        const itemType = read(item, "pointerType");
         append(
-          numeric(item.clientX, x),
-          numeric(item.clientY, y),
-          numeric(item.timeStamp, t),
+          numeric(item, "clientX", x),
+          numeric(item, "clientY", y),
+          numeric(item, "timeStamp", t),
           kind,
-          item.pointerType !== undefined ? pointerTypeCode(item.pointerType) : pointerType,
-          typeof item.isTrusted === "boolean" ? (item.isTrusted ? 1 : 0) : trusted,
+          itemType !== undefined ? pointerTypeCode(itemType) : pointerType,
+          typeof read(item, "isTrusted") === "boolean" ? trustedOf(item) : trusted,
         );
       }
+    } catch {
+      // Coalesced malformed: se conserva SOLO la muestra principal.
     }
+  }
+
+  function record(event: Event, kind: PointerSample["kind"]): void {
+    if (!attached) return;
+    const input = event as unknown as object;
+    const x = numeric(input, "clientX", 0);
+    const y = numeric(input, "clientY", 0);
+    const t = numeric(input, "timeStamp", 0);
+    const pointerType = pointerTypeCode(read(input, "pointerType"));
+    const trusted = trustedOf(input);
+
+    recordCoalesced(input, x, y, t, kind, pointerType, trusted);
     // La muestra principal siempre se guarda, incluso cuando hay coalesced.
     append(x, y, t, kind, pointerType, trusted);
 
     // Un evento = una marca de tiempo, sin importar cuántas muestras produjo.
-    const at = now();
-    eventTimes.push(at);
-    const cutoff = at - 1000;
-    while (eventTimes.length > 0 && eventTimes[0] < cutoff) {
-      eventTimes.shift();
+    const at = clock();
+    if (at !== null) {
+      eventTimes.push(at);
+      const cutoff = at - 1000;
+      while (eventTimes.length > 0 && eventTimes[0] < cutoff) {
+        eventTimes.shift();
+      }
     }
     lastEventAt = t;
   }
@@ -123,21 +162,40 @@ export function createMouseCollector({
     if (attached) return;
     // Resolver la frontera aquí: en el navegador es `document`; con un target
     // inyectado que no expone `.document`, se usa el propio target.
-    const withDocument = target as EventTarget & { document?: EventTarget };
-    boundary = withDocument.document ?? target;
-    target.addEventListener("pointermove", onMove, MOVE_LISTENER_OPTIONS);
-    boundary.addEventListener("pointerenter", onEnter, BOUNDARY_LISTENER_OPTIONS);
-    boundary.addEventListener("pointerleave", onLeave, BOUNDARY_LISTENER_OPTIONS);
+    let resolved: EventTarget;
+    try {
+      const withDocument = target as EventTarget & { document?: EventTarget };
+      resolved = withDocument.document ?? target;
+    } catch {
+      resolved = target;
+    }
+    boundary = resolved;
     attached = true;
+    try {
+      target.addEventListener("pointermove", onMove, MOVE_LISTENER_OPTIONS);
+      resolved.addEventListener("pointerenter", onEnter, BOUNDARY_LISTENER_OPTIONS);
+      resolved.addEventListener("pointerleave", onLeave, BOUNDARY_LISTENER_OPTIONS);
+    } catch {
+      // Registro parcial: se desmonta lo que se hubiera añadido (fail-closed).
+      detach();
+    }
   }
 
   function detach(): void {
     if (!attached) return;
-    target.removeEventListener("pointermove", onMove, MOVE_LISTENER_OPTIONS);
-    boundary?.removeEventListener("pointerenter", onEnter, BOUNDARY_LISTENER_OPTIONS);
-    boundary?.removeEventListener("pointerleave", onLeave, BOUNDARY_LISTENER_OPTIONS);
-    boundary = null;
     attached = false;
+    try {
+      target.removeEventListener("pointermove", onMove, MOVE_LISTENER_OPTIONS);
+    } catch {
+      // target hostil: no se puede hacer más.
+    }
+    try {
+      boundary?.removeEventListener("pointerenter", onEnter, BOUNDARY_LISTENER_OPTIONS);
+      boundary?.removeEventListener("pointerleave", onLeave, BOUNDARY_LISTENER_OPTIONS);
+    } catch {
+      // boundary hostil: no se puede hacer más.
+    }
+    boundary = null;
   }
 
   return {
@@ -149,6 +207,7 @@ export function createMouseCollector({
       return lastEventAt;
     },
     eventsSince(cutoff: number): number {
+      if (typeof cutoff !== "number" || !Number.isFinite(cutoff)) return 0;
       while (eventTimes.length > 0 && eventTimes[0] < cutoff) {
         eventTimes.shift();
       }

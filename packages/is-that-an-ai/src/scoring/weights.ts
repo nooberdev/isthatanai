@@ -30,4 +30,8 @@ export const weights = {
   roundSteps: 0.08,
 } as const satisfies Readonly<Record<keyof MouseFeatures, number>>;
 
+// `as const` solo es compile-time: se congela también en runtime para que un
+// script de la página no pueda reescribir los pesos del detector en caliente.
+Object.freeze(weights);
+
 export type FeatureWeights = typeof weights;

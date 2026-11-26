@@ -10,19 +10,6 @@
 import type { Collector, ScrollSample } from "../types";
 import { NumericRingBuffer } from "../utils/numeric-ring-buffer";
 
-interface WheelLike {
-  deltaX?: number;
-  deltaY?: number;
-  deltaMode?: number;
-  timeStamp?: number;
-  isTrusted?: boolean;
-}
-
-interface ScrollHost {
-  scrollX?: number;
-  scrollY?: number;
-}
-
 export interface ScrollCollectorOptions {
   /** Por defecto `window`, resuelto solo al llamar a la función. */
   target?: EventTarget;
@@ -62,14 +49,33 @@ const TRUSTED = 4;
 const SOURCE = 5;
 const FIELDS = 6;
 
-function numeric(value: number | undefined, fallback: number): number {
+/** Lectura defensiva: un getter que lanza se trata como propiedad ausente. */
+function read(object: object, key: string): unknown {
+  try {
+    return (object as Record<string, unknown>)[key];
+  } catch {
+    return undefined;
+  }
+}
+
+function numeric(object: object, key: string, fallback: number): number {
+  const value = read(object, key);
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+/** Solo `true` cuenta como confiable: `1`, `"true"` o un getter hostil no. */
+function trustedOf(object: object): 0 | 1 {
+  return read(object, "isTrusted") === true ? 1 : 0;
+}
+
+function finite(value: number): number {
+  return Number.isFinite(value) ? value : 0;
+}
+
 function toPixels(value: number, mode: number): number {
-  if (mode === 1) return value * LINES_TO_PX;
-  if (mode === 2) return value * PAGES_TO_PX;
-  return value;
+  const pixels = mode === 1 ? value * LINES_TO_PX : mode === 2 ? value * PAGES_TO_PX : value;
+  // Un delta hostil no puede introducir Infinity/NaN en el buffer.
+  return Number.isFinite(pixels) ? pixels : 0;
 }
 
 function toSample(row: Float64Array): ScrollSample {
@@ -96,52 +102,81 @@ export function createScrollCollector({
   let lastScrollY: number | null = null;
   const eventTimes: number[] = [];
 
+  function clock(): number | null {
+    try {
+      const value = now();
+      return typeof value === "number" && Number.isFinite(value) ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
   function append(dx: number, dy: number, t: number, trusted: 0 | 1, source: 0 | 1): void {
     seq += 1;
     buffer.push(seq, dx, dy, t, trusted, source);
     lastEventAt = t;
-    const at = now();
-    eventTimes.push(at);
-    const cutoff = at - 1000;
-    while (eventTimes.length > 0 && eventTimes[0] < cutoff) eventTimes.shift();
+    const at = clock();
+    if (at !== null) {
+      eventTimes.push(at);
+      const cutoff = at - 1000;
+      while (eventTimes.length > 0 && eventTimes[0] < cutoff) {
+        eventTimes.shift();
+      }
+    }
   }
 
   function recordWheel(event: Event): void {
-    const input = event as unknown as WheelLike;
-    const mode = numeric(input.deltaMode, 0);
+    if (!attached) return;
+    const input = event as unknown as object;
+    const mode = numeric(input, "deltaMode", 0);
     append(
-      toPixels(numeric(input.deltaX, 0), mode),
-      toPixels(numeric(input.deltaY, 0), mode),
-      numeric(input.timeStamp, 0),
-      input.isTrusted ? 1 : 0,
+      toPixels(numeric(input, "deltaX", 0), mode),
+      toPixels(numeric(input, "deltaY", 0), mode),
+      numeric(input, "timeStamp", 0),
+      trustedOf(input),
       0,
     );
   }
 
   function recordScroll(event: Event): void {
+    if (!attached) return;
     // Estado de scroll, leído AQUÍ (nunca al importar ni en el constructor).
-    const host = target as EventTarget & ScrollHost;
-    const x = numeric(host.scrollX, 0);
-    const y = numeric(host.scrollY, 0);
+    const host = target as unknown as object;
+    const x = numeric(host, "scrollX", 0);
+    const y = numeric(host, "scrollY", 0);
     const dx = lastScrollX === null ? 0 : x - lastScrollX;
     const dy = lastScrollY === null ? 0 : y - lastScrollY;
     lastScrollX = x;
     lastScrollY = y;
-    append(dx, dy, numeric(event.timeStamp, 0), event.isTrusted ? 1 : 0, 1);
+    append(
+      finite(dx),
+      finite(dy),
+      numeric(event as unknown as object, "timeStamp", 0),
+      trustedOf(event as unknown as object),
+      1,
+    );
   }
 
   function attach(): void {
     if (attached) return;
-    target.addEventListener("wheel", recordWheel, WHEEL_LISTENER_OPTIONS);
-    target.addEventListener("scroll", recordScroll, SCROLL_LISTENER_OPTIONS);
     attached = true;
+    try {
+      target.addEventListener("wheel", recordWheel, WHEEL_LISTENER_OPTIONS);
+      target.addEventListener("scroll", recordScroll, SCROLL_LISTENER_OPTIONS);
+    } catch {
+      detach();
+    }
   }
 
   function detach(): void {
     if (!attached) return;
-    target.removeEventListener("wheel", recordWheel, WHEEL_LISTENER_OPTIONS);
-    target.removeEventListener("scroll", recordScroll, SCROLL_LISTENER_OPTIONS);
     attached = false;
+    try {
+      target.removeEventListener("wheel", recordWheel, WHEEL_LISTENER_OPTIONS);
+      target.removeEventListener("scroll", recordScroll, SCROLL_LISTENER_OPTIONS);
+    } catch {
+      // target hostil: no se puede hacer más.
+    }
   }
 
   return {
@@ -151,7 +186,10 @@ export function createScrollCollector({
     getSamples: () => buffer.rows().map(toSample),
     discardOldestBefore: (tMin: number) => buffer.discardOldestBefore(tMin, T),
     eventsSince(cutoff: number): number {
-      while (eventTimes.length > 0 && eventTimes[0] < cutoff) eventTimes.shift();
+      if (typeof cutoff !== "number" || !Number.isFinite(cutoff)) return 0;
+      while (eventTimes.length > 0 && eventTimes[0] < cutoff) {
+        eventTimes.shift();
+      }
       return eventTimes.length;
     },
     clear(): void {

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>is-that-an-ai — etiqueta script</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 2rem; }
+    #estado { font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Detección con &lt;script&gt;</h1>
+  <p id="estado">midiendo…</p>
+  <p>Mueva el puntero o use el mando. La librería no envía datos ni guarda nada.</p>
+
+  <!-- Compilar primero con `bun run build`; el global se llama IsThatAnAI. -->
+  <script src="../packages/is-that-an-ai/dist/index.iife.js"></script>
+  <script>
+    const detector = new IsThatAnAI.IsThatAnAI({ device: "auto" });
+    const estado = document.getElementById("estado");
+    detector.onVerdict((v) => {
+      estado.textContent = `${v.state} · score ${v.score === null ? "—" : v.score.toFixed(3)}`;
+    });
+    detector.start();
+    window.addEventListener("pagehide", () => detector.stop(), { once: true });
+  </script>
+</body>
+</html>

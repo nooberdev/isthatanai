@@ -73,6 +73,15 @@
 	// (performance.now() o epoch), sin importar cuál use el colector.
 	let clockOffset: number | null = null;
 
+	// Reutilizados entre frames: el trazo se redibuja cada frame porque el
+	// desvanecido depende del tiempo, así que evitamos asignar un Map, objetos
+	// Cell y cadenas de color en cada fotograma. La salida es idéntica.
+	const cells = new Map<string, Cell>();
+	const cellPool: Cell[] = [];
+	let cellCount = 0;
+	const colorCache = new Map<number, string>();
+	const scratch: Rgb = { r: 0, g: 0, b: 0 };
+
 	function now(): number {
 		return clockOffset === null ? Date.now() : performance.now() - clockOffset;
 	}
@@ -86,21 +95,33 @@
 		if (newest !== -Infinity) clockOffset = performance.now() - newest;
 	}
 
-	function mixScore(t: number): Rgb {
+	function mixScoreInto(t: number, out: Rgb): void {
 		const clamped = Math.min(1, Math.max(0, t));
 		for (let i = 1; i < RAMP.length; i++) {
 			const [stopB, colorB] = RAMP[i];
 			const [stopA, colorA] = RAMP[i - 1];
 			if (clamped <= stopB) {
 				const k = (clamped - stopA) / (stopB - stopA);
-				return {
-					r: Math.round(colorA.r + (colorB.r - colorA.r) * k),
-					g: Math.round(colorA.g + (colorB.g - colorA.g) * k),
-					b: Math.round(colorA.b + (colorB.b - colorA.b) * k)
-				};
+				out.r = Math.round(colorA.r + (colorB.r - colorA.r) * k);
+				out.g = Math.round(colorA.g + (colorB.g - colorA.g) * k);
+				out.b = Math.round(colorA.b + (colorB.b - colorA.b) * k);
+				return;
 			}
 		}
-		return RAMP[RAMP.length - 1][1];
+		out.r = RAMP[RAMP.length - 1][1].r;
+		out.g = RAMP[RAMP.length - 1][1].g;
+		out.b = RAMP[RAMP.length - 1][1].b;
+	}
+
+	function colorFor(score: number): string {
+		let color = colorCache.get(score);
+		if (color === undefined) {
+			mixScoreInto(score, scratch);
+			color = `rgb(${scratch.r} ${scratch.g} ${scratch.b})`;
+			if (colorCache.size >= 128) colorCache.clear();
+			colorCache.set(score, color);
+		}
+		return color;
 	}
 
 	// Única fuente del trazo: el colector de la librería. Cada frame se piden
@@ -189,7 +210,8 @@
 		c.clearRect(0, 0, canvas.width, canvas.height);
 		if (reduced || points.length < 2) return;
 
-		const cells = new Map<string, Cell>();
+		cells.clear();
+		cellCount = 0;
 
 		for (let i = 1; i < points.length; i++) {
 			const a = points[i - 1];
@@ -212,13 +234,21 @@
 				const y = Math.round(ay + ((by - ay) * s) / steps);
 				const key = `${x},${y}`;
 				const prev = cells.get(key);
-				if (!prev) cells.set(key, { alpha, score: b.score });
-				else {
+				if (prev) {
 					// El punto más reciente manda en color; el alfa es el máximo.
-					cells.set(key, {
-						alpha: Math.max(prev.alpha, alpha),
-						score: b.score
-					});
+					prev.alpha = Math.max(prev.alpha, alpha);
+					prev.score = b.score;
+				} else {
+					let cell = cellPool[cellCount];
+					if (!cell) {
+						cell = { alpha, score: b.score };
+						cellPool.push(cell);
+					} else {
+						cell.alpha = alpha;
+						cell.score = b.score;
+					}
+					cells.set(key, cell);
+					cellCount += 1;
 				}
 			}
 		}
@@ -227,11 +257,10 @@
 			const comma = key.indexOf(",");
 			const x = Number(key.slice(0, comma));
 			const y = Number(key.slice(comma + 1));
-			const color = mixScore(cell.score);
 			// Casi todo el trazo a plena opacidad (como en la referencia); solo la
 			// cola se desvanece, así ningún color se mezcla con el fondo.
 			c.globalAlpha = Math.min(1, cell.alpha * 3);
-			c.fillStyle = `rgb(${color.r} ${color.g} ${color.b})`;
+			c.fillStyle = colorFor(cell.score);
 			c.fillRect(x, y, THICKNESS, THICKNESS);
 		}
 

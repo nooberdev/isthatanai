@@ -44,7 +44,7 @@
 // NEUTRAL = 0.5. La agregación entre trazos es media ponderada por longitud.
 
 import type { ScrollSample } from "../types";
-import { clamp, linear, mean, median, stddev } from "../utils/math";
+import { clamp, distance, linear, mean, median, stddev } from "../utils/math";
 
 export const SCROLL_NEUTRAL = 0.5;
 
@@ -110,9 +110,29 @@ export function withoutAutoscroll(samples: ScrollSample[]): ScrollSample[] {
   return excluded.some(Boolean) ? samples.filter((_, i) => !excluded[i]) : samples;
 }
 
+// Ataque: dx/dy/t hostiles (NaN, ±Infinity, 1e308). Las cotas están muy por
+// encima de un scroll real, así que las muestras normales no se alteran.
+const MAX_DELTA = 1e9;
+const MAX_TIME = 1e15;
+
+function bounded(value: number, limit: number): number {
+  return Number.isFinite(value) ? clamp(value, -limit, limit) : 0;
+}
+
+function sanitize(sample: ScrollSample): ScrollSample {
+  return {
+    ...sample,
+    dx: bounded(sample.dx, MAX_DELTA),
+    dy: bounded(sample.dy, MAX_DELTA),
+    t: bounded(sample.t, MAX_TIME),
+    source: sample.source === DOCUMENT_SOURCE ? DOCUMENT_SOURCE : WHEEL_SOURCE,
+    trusted: sample.trusted === 1 ? 1 : 0,
+  };
+}
+
 /** Vista puntuable: sin autoscroll y con una sola fuente. */
 function viewOf(samples: ScrollSample[]): ScrollSample[] {
-  return preferredSource(withoutAutoscroll(samples));
+  return preferredSource(withoutAutoscroll(samples.map(sanitize)));
 }
 
 export interface ScrollFeatures {
@@ -157,7 +177,7 @@ function strokesOf(samples: ScrollSample[]): ScrollSample[][] {
 }
 
 function magnitude(sample: ScrollSample): number {
-  return Math.sqrt(sample.dx * sample.dx + sample.dy * sample.dy);
+  return distance(sample.dx, sample.dy);
 }
 
 function cv(values: number[]): number {
@@ -320,7 +340,8 @@ export function extractScrollFeatures(samples: ScrollSample[]): ScrollFeatures {
  * Pesos conservadores del score de scroll (suma 1.15; se normalizan). Ver el encabezado: la
  * rueda está cuantizada por el dispositivo y axisLock casi siempre es vertical.
  */
-export const SCROLL_FEATURE_WEIGHTS = {
+// `as const` es solo compile-time: Object.freeze evita mutaciones en runtime.
+export const SCROLL_FEATURE_WEIGHTS = Object.freeze({
   deltaUniformity: 0.1,
   intervalRegularity: 0.45,
   directionChanges: 0.1,
@@ -329,7 +350,7 @@ export const SCROLL_FEATURE_WEIGHTS = {
   roundDeltas: 0.05,
   axisLock: 0,
   largeJumps: 0.15,
-} as const satisfies Readonly<Record<keyof ScrollFeatures, number>>;
+} as const satisfies Readonly<Record<keyof ScrollFeatures, number>>);
 
 /** Score de la señal de scroll: media ponderada de las medidas con peso > 0. */
 export function computeScrollScore(features: ScrollFeatures): number {
@@ -374,4 +395,171 @@ export function scrollReasons(features: ScrollFeatures, top = 2): string[] {
     .sort((a, b) => b.weight * b.value - a.weight * a.value)
     .slice(0, top)
     .map((entry) => texts[entry.key]);
+}
+
+// ---------------------------------------------------------------------------
+// MEDIDAS PARCIALES (índices ~ del checklist). Carril nuevo y aditivo.
+//
+// Interfaz y tabla de pesos propias con TODOS los pesos a 0: `ScrollFeatures`,
+// `extractScrollFeatures`, el score y las razones existentes no cambian. Solo
+// números de ScrollSample (dx/dy/t), sin DOM, red ni almacenamiento.
+// 1 = más probable IA; evidencia insuficiente -> SCROLL_NEUTRAL = 0.5.
+// ---------------------------------------------------------------------------
+
+/** Mínimo de muestras para medir la velocidad del scroll. */
+const SCROLL_SPEED_MIN_SAMPLES = 3;
+/** Velocidad de scroll (px/ms): <= 1 -> 0, >= 8 -> 1; lineal entre. */
+const SCROLL_SPEED_LOW = 1;
+const SCROLL_SPEED_HIGH = 8;
+/** "Instantáneo hasta el final": trazo de <= 2 eventos con >= 1000px. */
+const INSTANT_END_MAX_SAMPLES = 2;
+const INSTANT_END_MIN_PX = 1000;
+
+/** Medidas parciales de scroll; ninguna entra en el score actual (pesos 0). */
+export interface ScrollPartialFeatures {
+  scrollSpeed: number;
+  instantEnd: number;
+}
+
+/** Pesos del carril parcial: TODOS 0 (no cambian ningún score existente). */
+// `as const` es solo compile-time: Object.freeze evita mutaciones en runtime.
+export const SCROLL_PARTIAL_FEATURE_WEIGHTS = Object.freeze({
+  scrollSpeed: 0,
+  instantEnd: 0,
+} as const satisfies Readonly<Record<keyof ScrollPartialFeatures, number>>);
+
+/** L104 Velocidad del scroll: píxeles por milisegundo dentro de cada trazo.
+ *  Thresholds: <= 1 px/ms -> 0; >= 8 px/ms -> 1; lineal entre. */
+export function scrollSpeed(samples: ScrollSample[]): number {
+  const view = viewOf(samples);
+  if (view.length < SCROLL_SPEED_MIN_SAMPLES) return SCROLL_NEUTRAL;
+  let distancePx = 0;
+  let timeMs = 0;
+  let count = 0;
+  for (const stroke of strokesOf(view)) {
+    for (let i = 1; i < stroke.length; i += 1) {
+      const dt = stroke[i].t - stroke[i - 1].t;
+      if (dt <= 0) continue;
+      distancePx += magnitude(stroke[i]);
+      timeMs += dt;
+      count += 1;
+    }
+  }
+  if (count === 0 || timeMs <= 0) return SCROLL_NEUTRAL;
+  return linear(distancePx / timeMs, SCROLL_SPEED_LOW, SCROLL_SPEED_HIGH);
+}
+
+/** L112 Scroll instantáneo hasta el final: trazo muy corto (<= 2 eventos) con
+ *  desplazamiento acumulado >= 1000px. Thresholds: ratio de trazos 0 -> 0,
+ *  >= 0.5 -> 1; lineal entre. Sin trazos -> SCROLL_NEUTRAL. */
+export function scrollInstantEnd(samples: ScrollSample[]): number {
+  const strokes = strokesOf(viewOf(samples));
+  if (strokes.length === 0) return SCROLL_NEUTRAL;
+  let instant = 0;
+  for (const stroke of strokes) {
+    let total = 0;
+    for (const sample of stroke) total += Math.abs(sample.dy);
+    if (stroke.length <= INSTANT_END_MAX_SAMPLES && total >= INSTANT_END_MIN_PX) instant += 1;
+  }
+  return linear(instant / strokes.length, 0, 0.5);
+}
+
+/** Extrae las medidas parciales de scroll en una sola vista puntuable. */
+export function extractPartialScrollFeatures(samples: ScrollSample[]): ScrollPartialFeatures {
+  return {
+    scrollSpeed: scrollSpeed(samples),
+    instantEnd: scrollInstantEnd(samples),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// CARRIL FINAL (índices L110..L111 del checklist). Aditivo, con pesos 0.
+// Igual que en los otros archivos: no se amplían las tablas existentes (hay
+// tests que fijan sus claves exactas). Solo números de ScrollSample (dx/dy/t).
+// 1 = más IA; evidencia insuficiente -> SCROLL_NEUTRAL = 0.5.
+// ---------------------------------------------------------------------------
+
+/** Correlación de Pearson acotada a [-1, 1]; 0 sin varianza suficiente. */
+function finalCorrelation(xs: number[], ys: number[]): number {
+  const n = Math.min(xs.length, ys.length);
+  if (n < 3) return 0;
+  const mx = mean(xs.slice(0, n));
+  const my = mean(ys.slice(0, n));
+  let num = 0;
+  let dx2 = 0;
+  let dy2 = 0;
+  for (let i = 0; i < n; i += 1) {
+    const a = xs[i] - mx;
+    const b = ys[i] - my;
+    num += a * b;
+    dx2 += a * a;
+    dy2 += b * b;
+  }
+  if (dx2 <= 1e-12 || dy2 <= 1e-12) return 0;
+  const r = num / Math.sqrt(dx2 * dy2);
+  return Number.isFinite(r) ? clamp(r, -1, 1) : 0;
+}
+
+/** Medidas finales de scroll. Peso 0 por defecto; 1 = más IA. */
+export interface ScrollFinalPartialFeatures {
+  proportional: number;
+  noOtherMovement: number;
+}
+
+/** Tabla de la lane final: TODOS 0 (ningún score existente la consulta). */
+export const SCROLL_FINAL_PARTIAL_FEATURE_WEIGHTS = Object.freeze({
+  proportional: 0,
+  noOtherMovement: 0,
+} as const satisfies Readonly<Record<keyof ScrollFinalPartialFeatures, number>>);
+
+/** L110 · Scroll proporcional al contenido: el desplazamiento de una rueda
+ *  humana crece con el tiempo que se dedica a desplazarse; un `scrollTo` aplica
+ *  siempre el mismo salto. Correlación entre |dy| y el intervalo previo.
+ *  Thresholds: |correlación| <= 0 -> 1 (salto fijo, IA), >= 0.5 -> 0. */
+export function scrollProportional(samples: ScrollSample[]): number {
+  const view = viewOf(samples);
+  const magnitudes: number[] = [];
+  const intervals: number[] = [];
+  for (const stroke of strokesOf(view)) {
+    for (let i = 1; i < stroke.length; i += 1) {
+      const dt = stroke[i].t - stroke[i - 1].t;
+      const dy = Math.abs(stroke[i].dy);
+      if (dt <= 0 || dy <= 1e-9) continue;
+      magnitudes.push(dy);
+      intervals.push(dt);
+    }
+  }
+  if (magnitudes.length < 4) return SCROLL_NEUTRAL;
+  return 1 - linear(Math.abs(finalCorrelation(magnitudes, intervals)), 0, 0.5);
+}
+
+/** L111 · Scroll sin otro movimiento: un gesto aislado y programático llega a
+ *  intervalos casi exactos; la interacción humana (rueda + otras acciones)
+ *  introduces jitter. Thresholds: CV <= 0.03 -> 1 (IA), >= 0.2 -> 0. */
+export function scrollNoOtherMovement(samples: ScrollSample[]): number {
+  const view = viewOf(samples);
+  const byStroke: number[][] = [];
+  for (const stroke of strokesOf(view)) {
+    const dts = intervalsOf(stroke);
+    if (dts.length >= 2) byStroke.push(dts);
+  }
+  if (byStroke.length === 0) return SCROLL_NEUTRAL;
+  let acc = 0;
+  let total = 0;
+  for (const intervals of byStroke) {
+    const m = mean(intervals);
+    if (m <= 1e-9) continue;
+    const value = 1 - linear(stddev(intervals) / m, 0.03, 0.2);
+    acc += value * intervals.length;
+    total += intervals.length;
+  }
+  return total > 0 ? acc / total : SCROLL_NEUTRAL;
+}
+
+/** Extrae las 2 medidas finales de scroll en una sola vista puntuable. */
+export function extractFinalScrollFeatures(samples: ScrollSample[]): ScrollFinalPartialFeatures {
+  return {
+    proportional: scrollProportional(samples),
+    noOtherMovement: scrollNoOtherMovement(samples),
+  };
 }
