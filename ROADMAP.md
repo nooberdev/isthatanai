@@ -9,7 +9,7 @@
 - ✅ **Etapa 4 terminada y calibrada:** 10 medidas reales, score 0–1, razones y sesgo a humano hasta evidencia sostenida.
 - ✅ **Etapa 5 terminada:** demo pública beta en GitHub Pages, grabador local y extensión Firefox; el código fuente de la web es privado y solo la librería es pública.
 - ✅ **Etapa 6 terminada:** recolectores y medidas de clics y scroll, combinadas al score solo con evidencia; botón medio y autoscroll tratados aparte.
-- 🔄 **Etapa 7 en curso:** recolector de teclado con categorías esenciales + modificadores/atajos y detección de pegado por metadata (sin contenido).
+- ✅ **Etapa 7 terminada:** teclado con categorías esenciales + modificadores, pegado detectado por metadata y sin contenido.
 - ⏳ **Metas:** se decidirán en la Etapa 8 con datos reales.
 
 ## Etapas
@@ -52,7 +52,7 @@ Subir la demo a una dirección pública y activar el grabador de sesiones. Va pr
 - Clicks: puntería, duración, ráfagas, ritmo.
 - Scroll: velocidad, ritmo, saltos, dirección, inercia.
 
-### Etapa 7 — teclado ← en curso
+### Etapa 7 — teclado ✅
 
 - Ritmo, pausas, errores y pegado de texto; comportamiento de escritura.
 - **Bloqueante:** falta la decisión sobre las categorías de tecla (letra, número, espacio, borrar, etc.).
