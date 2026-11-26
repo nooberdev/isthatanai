@@ -125,8 +125,9 @@
 		}
 		let raw: unknown;
 		try {
-			// El registro en memoria es el JSON de la sesión grabada o importada.
-			raw = d.recalibrateFromSession(session);
+			// El contrato de calibración lee las muestras en la raíz (keys, points,
+			// clicks, scrolls, inputs), no el sobre con version/fecha del archivo.
+			raw = d.recalibrateFromSession(session.samples);
 		} catch (error) {
 			say("recorder.calibration.failed", {
 				error: error instanceof Error ? error.message : tr("recorder.calibration.invalid")
@@ -166,10 +167,10 @@
 		live.pump();
 	}
 
-	// Igual que antes: stats y verdict se refrescan solo mientras se graba,
-	// ahora leyendo el sondeo compartido en vez de llamar a los getters.
-	let stats = $state(live.stats);
-	let verdict = $state(live.verdict);
+	// Los datos "en vivo" del encabezado vienen del sondeo compartido: nunca se
+	// quedan congelados en el último muestreo cuando la grabación está detenida.
+	let stats = $derived(live.stats);
+	let verdict = $derived(live.verdict);
 
 	function append<K extends keyof SessionSnapshot>(key: K, items: SessionSnapshot[K]): void {
 		if (items.length === 0) return;
@@ -183,8 +184,6 @@
 		append("scrolls", getRecentScrolls(lastSeq.scrolls));
 		append("keys", getRecentKeys(lastSeq.keys));
 		append("inputs", getRecentInputs(lastSeq.inputs));
-		stats = live.stats;
-		verdict = live.verdict;
 	}
 
 	$effect(() => {
@@ -242,7 +241,12 @@
 	}
 
 	function exportJson(): void {
-		const record = session ?? createSession(draft, durationOf(draft));
+		// Si la grabación sigue activa, se exporta lo capturado hasta ahora;
+		// si no, la sesión guardada/importada.
+		const record =
+			recording && draftTotal > 0
+				? createSession(draft, durationOf(draft))
+				: (session ?? createSession(draft, durationOf(draft)));
 		if (summarize(record).total === 0) {
 			say("recorder.note.nothing");
 			return;
@@ -283,19 +287,18 @@
 			draft.keys.length +
 			draft.inputs.length
 	);
-	const summary = $derived(
-		session
-			? summarize(session)
-			: {
-					points: draft.points.length,
-					clicks: draft.clicks.length,
-					scrolls: draft.scrolls.length,
-					keys: draft.keys.length,
-					inputs: draft.inputs.length,
-					total: draftTotal,
-					durationMs: durationOf(draft)
-				}
-	);
+	const draftSummary = $derived.by(() => ({
+		points: draft.points.length,
+		clicks: draft.clicks.length,
+		scrolls: draft.scrolls.length,
+		keys: draft.keys.length,
+		inputs: draft.inputs.length,
+		total: draftTotal,
+		durationMs: durationOf(draft)
+	}));
+	// Mientras se graba, la tabla describe lo que se está capturando; al parar,
+	// describe la sesión guardada o importada.
+	const summary = $derived(recording ? draftSummary : session ? summarize(session) : draftSummary);
 	const verdictLabel = $derived(
 		verdict.state === "ai"
 			? tr("label.ai")

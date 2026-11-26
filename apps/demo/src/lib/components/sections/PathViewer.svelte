@@ -26,7 +26,7 @@
 	);
 </script>
 
-<section class="pv-section" aria-labelledby="pv-title">
+<section class="section pv-section" aria-labelledby="pv-title">
 	<div class="pv-content">
 		<h2 id="pv-title" class="section-title">{tr("pathview.title")}</h2>
 		<p class="section-body">
@@ -63,6 +63,7 @@
 					aria-label={tr("pathview.svg.aria", { source: sourceLabel, count: moving.length, span })}
 					preserveAspectRatio="xMidYMid meet"
 				>
+					<title>{tr("pathview.svg.aria", { source: sourceLabel, count: moving.length, span })}</title>
 					<defs>
 						<pattern
 							id="pv-grid-pattern"

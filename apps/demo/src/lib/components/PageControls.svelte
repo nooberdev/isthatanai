@@ -62,6 +62,15 @@
 
 <div class="page-controls" bind:this={rootEl}>
 	<div class="page-controls__bar" role="group" aria-label={tr("controls.group.aria")}>
+		<a
+			class="ctl"
+			href="/docs"
+			aria-label="Documentation"
+			title="Documentation"
+		>
+			<span class="material-symbols-rounded" aria-hidden="true">menu_book</span>
+		</a>
+		<span class="page-controls__divider" aria-hidden="true"></span>
 		<button
 			type="button"
 			class="ctl"
@@ -139,6 +148,7 @@
 
 	.page-controls__bar {
 		display: flex;
+		align-items: center;
 		gap: 0.125rem;
 		padding: 0.125rem;
 		border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
@@ -147,6 +157,12 @@
 		-webkit-backdrop-filter: blur(10px) saturate(140%);
 		backdrop-filter: blur(10px) saturate(140%);
 		box-shadow: 0 2px 10px rgb(0 0 0 / 8%);
+	}
+
+	.page-controls__divider {
+		width: 1px;
+		height: 16px;
+		background: color-mix(in srgb, var(--foreground) 12%, transparent);
 	}
 
 	.ctl {
@@ -160,6 +176,7 @@
 		background: transparent;
 		color: var(--foreground);
 		font-family: inherit;
+		text-decoration: none;
 		cursor: pointer;
 		transition: background-color var(--dur-180) var(--ease-out), transform var(--dur-180) var(--ease-out);
 	}

@@ -17,7 +17,7 @@ coherencia/entorno, 3 de privacidad y la recalibración desde sesión grabada.
 
 Las medidas nuevas son **opt-in** (`advancedMeasures`) y no alteran la calibración
 validada: los 8 valores del laboratorio siguen idénticos y la suite pasa con
-**615 tests**. Táctil y atención se activan pasando sus opciones al detector.
+**851 tests**. Táctil y atención se activan pasando sus opciones al detector. El detalle item por ítem está en `REAL_WORLD_AUDIT.md`.
 
 ## Ítems que eran parciales y ahora están completos (61)
 
@@ -76,11 +76,11 @@ Código: `apps/demo/src/lib/components/sections/**` y `apps/demo/src/lib/lab/**`
 ## Evidencia de validación
 
 ```
-bun test                 → 615 pass, 0 fail, 311029 expect() calls, 43 files
+bun test                 → 851 pass, 0 fail, 316119 expect() calls, 49 files
 bun run typecheck        → exit 0 (librería + svelte-check de la demo: 0 errores/0 warnings)
 bun run lint             → exit 0, 0 errores (3 warnings preexistentes)
 bun run build            → exit 0 (ESM + IIFE + .d.ts)
-bun tools/check-bundle.ts → IIFE 198,04 KB / ESM 346,38 KB, global y exports OK
+bun tools/check-bundle.ts → IIFE 200,61 KB / ESM 351,83 KB, global y exports OK
 bun run --filter=demo check → 0 errores / 0 warnings
 bun run --filter=demo build → exit 0 (prerender OK)
 ```

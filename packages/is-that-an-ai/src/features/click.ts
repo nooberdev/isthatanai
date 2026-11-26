@@ -484,3 +484,63 @@ export function extractFinalClickFeatures(samples: ClickSample[]): ClickFinalPar
     order: clickOrder(samples),
   };
 }
+
+// ---------------------------------------------------------------------------
+// CARRIL OPT-IN (índices L61 y L67 del checklist). Aditivo, con pesos 0.
+//
+// No amplía ninguna de las tablas anteriores (hay tests que fijan su número
+// exacto de claves). Solo números de ClickSample: `t` es event.timeStamp
+// medido desde el origen de la navegación, así que el primer `down` es, por
+// sí mismo, el tiempo transcurrido desde la carga de la página. Sin DOM, red,
+// almacenamiento ni identidad de texto. 1 = más IA; sin evidencia -> 0.5.
+// ---------------------------------------------------------------------------
+
+/** L61 · primer click: <= 50 ms tras la carga => 1 (IA), >= 500 ms => 0. */
+const FIRST_CLICK_AI_MS = 50;
+const FIRST_CLICK_HUMAN_MS = 500;
+/** L67 · velocidad de clics seguidos: >= 10/s => 1 (IA), <= 5/s => 0. */
+const CONSECUTIVE_SPEED_AI_PER_S = 10;
+const CONSECUTIVE_SPEED_HUMAN_PER_S = 5;
+
+/** Medidas opt-in de clic; ninguna entra en un score existente (pesos 0). */
+export interface ClickOptInFeatures {
+  firstClickLatency: number;
+  consecutiveSpeed: number;
+}
+
+/** Tabla opt-in: TODOS 0, para no alterar scores calibrados. */
+export const CLICK_OPT_IN_FEATURE_WEIGHTS = Object.freeze({
+  firstClickLatency: 0,
+  consecutiveSpeed: 0,
+} as const satisfies Readonly<Record<keyof ClickOptInFeatures, number>>);
+
+/** L61 · Tiempo desde la carga hasta el primer click. Un agente que dispara
+ *  en cuanto el script arranca (timeStamp ~0) no pudo haber leído la página.
+ *  Umbrales documentados: t <= 50ms -> 1, t >= 500ms -> 0, lineal entre. */
+export function clickFirstClickLatency(samples: ClickSample[]): number {
+  const primary = primaryOnly(samples);
+  let first = Infinity;
+  for (const sample of primary) {
+    if (sample.kind === 0 && sample.t < first) first = sample.t;
+  }
+  if (!Number.isFinite(first)) return CLICK_NEUTRAL;
+  return 1 - linear(first, FIRST_CLICK_AI_MS, FIRST_CLICK_HUMAN_MS);
+}
+
+/** L67 · Velocidad de clics seguidos, en clics/s sobre la mediana de
+ *  intervalos down->down. Humanos abarcan ~2-3/s; un bucle automatizado
+ *  sostiene >= 10/s. Umbrales: <= 5/s -> 0, >= 10/s -> 1, lineal entre. */
+export function clickConsecutiveSpeed(samples: ClickSample[]): number {
+  const intervals = downIntervals(pairsOf(primaryOnly(samples)));
+  if (intervals.length < 2) return CLICK_NEUTRAL;
+  const rate = 1000 / Math.max(median(intervals), 1e-9);
+  return linear(rate, CONSECUTIVE_SPEED_HUMAN_PER_S, CONSECUTIVE_SPEED_AI_PER_S);
+}
+
+/** Extrae las 2 medidas opt-in en una sola lectura. */
+export function extractOptInClickFeatures(samples: ClickSample[]): ClickOptInFeatures {
+  return {
+    firstClickLatency: clickFirstClickLatency(samples),
+    consecutiveSpeed: clickConsecutiveSpeed(samples),
+  };
+}

@@ -625,6 +625,10 @@ export class IsThatAnAI {
   private started = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   private verdict: Verdict = MEASURING;
+  /** Razones canónicas (español) de la última evaluación. Se traducen en cada
+   *  lectura/despacho para que un cambio de `locale` en caliente surta efecto
+   *  inmediato (L161/L183) sin alterar los defaults en español/inglés. */
+  private rawReasons: string[] = [];
   private lastEmittedState: Verdict["state"] = "measuring";
   private lastChangeState: StableBand | null = null;
   private pendingState: Verdict["state"] | null = null;
@@ -1147,6 +1151,20 @@ export class IsThatAnAI {
   // -------------------------------------------------------------------------
 
   /**
+   * Retraduce las razones ya calculadas cuando cambia el idioma efectivo. Las
+   * razones canónicas viven en `rawReasons`; la forma pública (`getVerdict`,
+   * `getReasons`, callbacks) sigue entregando copias localizadas. Sin razones
+   * previas no hace nada, por lo que los defaults no se alteran.
+   */
+  private retranslateVerdict(): void {
+    if (this.rawReasons.length === 0) return;
+    this.verdict = {
+      ...this.verdict,
+      reasons: translateReasons(this.rawReasons, this.locale),
+    };
+  }
+
+  /**
    * Fusiona opciones parciales con la configuración activa. Los campos que no
    * se envían se conservan; llamar sin argumentos deja todo igual.
    */
@@ -1230,7 +1248,10 @@ export class IsThatAnAI {
       const requested = safeLocale(localeIn);
       this.localeOption = requested;
       // Un idioma forzado aplica de inmediato; `auto` se resuelve en start().
-      if (requested !== "auto") this.locale = requested;
+      if (requested !== "auto" && requested !== this.locale) {
+        this.locale = requested;
+        this.retranslateVerdict();
+      }
     }
     const accessibilityMode = safeAccessibility(accessibilityModeIn);
     if (accessibilityMode !== null) this.accessibilityOption = accessibilityMode;
@@ -1282,6 +1303,7 @@ export class IsThatAnAI {
     this.guardrailTolerances = { ...DEFAULT_GUARDRAIL_TOLERANCES };
     this.buffer.clear();
     this.verdict = MEASURING;
+    this.rawReasons = [];
     // Nueva sesión: el próximo score numérico vuelve a contar como cruce.
     this.lastThresholdScore = null;
     this.lastEmittedState = "measuring";
@@ -1435,7 +1457,11 @@ export class IsThatAnAI {
     if (this.started) return;
     // Único punto donde se detecta el idioma del sistema: en tiempo de ejecución,
     // nunca al importar ni en el constructor (SSR-safe).
-    this.locale = this.localeOption === "auto" ? detectLocale() : this.localeOption;
+    const resolvedLocale = this.localeOption === "auto" ? detectLocale() : this.localeOption;
+    if (resolvedLocale !== this.locale) {
+      this.locale = resolvedLocale;
+      this.retranslateVerdict();
+    }
     // Perfil detallado y accesibilidad `auto`: SOLO aquí se consulta el entorno.
     this.captureDeviceHints();
     // Privacidad: la preferencia explícita O "No rastrear" del navegador.
@@ -1709,6 +1735,7 @@ export class IsThatAnAI {
       }
       // FAIL CLOSED: una integridad rota NUNCA puede otorgar "humano".
       if (!integrityOk) reasons.push(INTEGRITY_REASON);
+      this.rawReasons = [...reasons];
 
       const state = this.classify(score, latestT);
       const finalScore: number | null = integrityOk ? score : null;

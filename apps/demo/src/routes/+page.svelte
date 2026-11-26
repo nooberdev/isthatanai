@@ -22,6 +22,9 @@
 	import AttentionTest from "#lib/components/sections/AttentionTest.svelte";
 	import Breakdown from "#lib/components/sections/Breakdown.svelte";
 	import Recorder from "#lib/components/sections/Recorder.svelte";
+	import PathViewer from "#lib/components/sections/PathViewer.svelte";
+	import BotSimulator from "#lib/components/sections/BotSimulator.svelte";
+	import AutoTest from "#lib/components/sections/AutoTest.svelte";
 	import Settings from "#lib/components/sections/Settings.svelte";
 	import type { SessionRecord } from "#lib/lab/session";
 	import type { VerdictState } from "#lib/motion/verdict.svelte";
@@ -331,6 +334,9 @@
 			session={recordedSession}
 			onSession={setRecordedSession}
 		/>
+		<PathViewer session={recordedSession} />
+		<BotSimulator />
+		<AutoTest />
 		<Settings {detector} />
 	</div>
 </main>

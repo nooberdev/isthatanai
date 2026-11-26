@@ -16,10 +16,13 @@
 //                        El cursor NO se registra (privacidad): el "regreso"
 //                        se infiere solo del tiempo entre blur y focus.
 // 6. resize            - eventos resize: 0 -> 0, >=3 -> 1.
-// 7. readingTime       - ratio de visible->siguiente evento en <=50ms:
+// 7. readingTime       - ratio de visible->siguiente ACCION en <=50ms:
 //                        <=0.05 -> 0, >=0.50 -> 1 (actuar sin leer).
 // 8. reactionTime      - media de visible->accion tras hidden->visible:
 //                        <=50ms -> 1, >=500ms -> 0.
+//    "Accion" = resize (4) o active (6). focus (2) y visibilitychange (0/1)
+//    NO cuentan: focus suele llegar ~10ms despues de visible sin que nadie
+//    haya leido todavia, y medirlo marcaba a cualquier humano como IA.
 // 9. reactionVariation - CV de esos tiempos: <=0.05 -> 1, >=0.40 -> 0.
 // 10. fatigue          - pendiente normalizada de los tiempos de reaccion:
 //                        <=0.02 -> 1 (sin fatiga), >=0.20 -> 0 (curva humana).
@@ -93,16 +96,34 @@ function gapsOf(samples: AttentionSample[]): number[] {
   return gaps;
 }
 
+/** Kinds que representan una accion real del usuario (no ruido de foco). */
+const ACTION_KINDS = new Set([4, 6]); // 4 = resize, 6 = active
+
+/**
+ * Retraso desde una muestra dada hasta la PRIMERA accion real posterior.
+ * focus (2), visible (0), hidden (1) e idle (5) se ignoran: son cambios de
+ * estado del navegador, no interacciones del usuario. Devuelve null si no hay
+ * accion posterior (sesion insuficiente -> medida neutra).
+ */
+function nextActionDelay(samples: AttentionSample[], visibleIndex: number): number | null {
+  for (let j = visibleIndex + 1; j < samples.length; j += 1) {
+    if (!ACTION_KINDS.has(samples[j].kind)) continue;
+    const dt = samples[j].t - samples[visibleIndex].t;
+    return dt > 0 ? dt : null;
+  }
+  return null;
+}
+
 /**
  * Retraso hasta la primera accion despues de que la pagina vuelve a hacerse
- * visible (hidden->visible->siguiente evento). Sin transiciones -> [].
+ * visible (hidden->visible->siguiente accion). Sin transiciones -> [].
  */
 function reactionDelaysOf(samples: AttentionSample[]): number[] {
   const delays: number[] = [];
-  for (let i = 1; i + 1 < samples.length; i += 1) {
+  for (let i = 1; i < samples.length; i += 1) {
     if (samples[i - 1].kind !== 1 || samples[i].kind !== 0) continue;
-    const dt = samples[i + 1].t - samples[i].t;
-    if (dt > 0) delays.push(dt);
+    const dt = nextActionDelay(samples, i);
+    if (dt !== null) delays.push(dt);
   }
   return delays;
 }
@@ -177,10 +198,10 @@ function resizeOf(samples: AttentionSample[]): number {
 /** Actuar en <=50ms tras hacerse visible: ratio <=0.05 -> 0, >=0.50 -> 1. */
 function readingTimeOf(samples: AttentionSample[]): number {
   const delays: number[] = [];
-  for (let i = 0; i + 1 < samples.length; i += 1) {
+  for (let i = 0; i < samples.length; i += 1) {
     if (samples[i].kind !== 0) continue;
-    const dt = samples[i + 1].t - samples[i].t;
-    if (dt > 0) delays.push(dt);
+    const dt = nextActionDelay(samples, i);
+    if (dt !== null) delays.push(dt);
   }
   if (delays.length === 0) return 0;
   const instant = delays.filter((dt) => dt <= 50).length / delays.length;

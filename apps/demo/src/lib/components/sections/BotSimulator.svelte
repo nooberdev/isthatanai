@@ -2,9 +2,8 @@
 	// Simulador: dos trazos deterministas pasan por el colector público y por
 	// ScoreComputer. Puntajes medidos, no estimados. Etiqueta SIMULADO.
 
-	import { onMount } from "svelte";
 	import { PROFILES, measure, type Band, type SimulationResult } from "#lib/lab/simulation";
-	import { tr, type DemoTranslationKey } from "#lib/i18n";
+	import { i18n, tr, type DemoTranslationKey } from "#lib/i18n";
 
 	const BAND_KEY: Record<Band, DemoTranslationKey> = {
 		humano: "band.human",
@@ -19,10 +18,15 @@
 		results = PROFILES.map((profile) => measure(profile.id, profile.generate()));
 	}
 
-	onMount(runAll);
+	// Las razones llegan localizadas de la librería: al cambiar de idioma se
+	// repite la misma medición determinista para que la tabla no quede vieja.
+	$effect(() => {
+		void i18n.locale;
+		runAll();
+	});
 </script>
 
-<section class="bs-section" aria-labelledby="bs-title">
+<section class="section bs-section" aria-labelledby="bs-title">
 	<div class="bs-content">
 		<h2 id="bs-title" class="section-title">{tr("botsim.title")}</h2>
 		<p class="section-body">

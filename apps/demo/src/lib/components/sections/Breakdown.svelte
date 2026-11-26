@@ -108,7 +108,7 @@
 	);
 </script>
 
-<section class="bd-section" aria-labelledby="bd-title">
+<section class="section bd-section" aria-labelledby="bd-title">
 	<div class="bd-content">
 		<h2 id="bd-title" class="section-title">{tr("breakdown.title")}</h2>
 		<p class="section-body">

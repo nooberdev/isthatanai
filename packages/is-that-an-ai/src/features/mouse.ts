@@ -173,6 +173,22 @@ function angleDelta(a: number, b: number): number {
   return delta;
 }
 
+/**
+ * Micro-ruido: pasos por debajo de esta fracción de la mediana del segmento son
+ * temblor/subpíxel, no giros intencionales. Un cursor quieto con trackpad o con
+ * zoom alto emite coords fraccionarias; sin este suelo esas micro-muestras
+ * dominan los ángulos y hacen que una pausa parezca "curvatura" o "zigzag".
+ */
+const MICRO_STEP_RATIO = 0.15;
+
+/** Pasos con longitud >= 15% de la mediana del segmento (descarta micro-ruido). */
+function significantSteps(steps: Step[]): Step[] {
+  if (steps.length < 2) return steps;
+  const med = median(steps.map((step) => distance(step.dx, step.dy)));
+  const floor = Math.max(1e-9, MICRO_STEP_RATIO * med);
+  return steps.filter((step) => distance(step.dx, step.dy) >= floor);
+}
+
 // ---------------------------------------------------------------------------
 // Medidas sobre segmentos ya preparados
 // ---------------------------------------------------------------------------
@@ -346,33 +362,44 @@ function intervalRegularityOf(prepared: PreparedSegment[]): number {
 }
 
 /**
- * Sobrepaso: reversión real. Detecta cambios de dirección > 120° y suma la
- * longitud del camino de cada ventana de reversión; el resultado es
- * min(1, excursiones / caminoTotal). Sin reversión -> 0.
+ * Sobrepaso: fracción REAL del camino que retrocede respecto a la dirección
+ * inicial del trayecto (primer paso representativo). Solo cuentan pasos cuya
+ * dirección difiere > 120° de esa referencia: la ida y vuelta y la corrección
+ * fina tras pasarse del botón.
+ *
+ * La versión anterior sumaba TODOS los excursionLen al final, de modo que
+ * `excursions === totalPath` siempre: cualquier reversión (por mínima que fuera)
+ * daba exactamente 1. Ahora el valor es proporcional al retroceso real.
+ * Thresholds: sqrt(backtrack / caminoTotal) <= 0.06 -> 0; >= 0.45 -> 1.
  */
 function overshootOf(prepared: PreparedSegment[]): number {
   const entries: WeightedValue[] = [];
   for (const { steps } of prepared) {
     if (steps.length < 2) continue;
-    let totalPath = 0;
-    let excursions = 0;
-    let currentDir: number | null = null;
-    let excursionLen = 0;
-    let hasReversal = false;
-    for (const step of steps) {
-      const stepLen = distance(step.dx, step.dy);
-      totalPath += stepLen;
-      const dir = Math.atan2(step.dy, step.dx);
-      if (currentDir !== null && angleDelta(dir, currentDir) > REVERSAL_RADIANS) {
-        hasReversal = true;
-        excursions += excursionLen;
-        excursionLen = 0;
+    const lengths = steps.map((step) => distance(step.dx, step.dy));
+    const totalPath = lengths.reduce((acc, length) => acc + length, 0);
+    if (totalPath <= 1e-9) continue;
+    const med = median(lengths);
+    const reference = steps.find((step) => distance(step.dx, step.dy) >= Math.max(1e-9, med));
+    if (!reference) continue;
+    const forward = Math.atan2(reference.dy, reference.dx);
+    let backtrack = 0;
+    let reversalRuns = 0;
+    let inReverse = false;
+    for (let i = 0; i < steps.length; i += 1) {
+      if (lengths[i] <= 1e-9) continue;
+      const dir = Math.atan2(steps[i].dy, steps[i].dx);
+      const reverse = angleDelta(dir, forward) > REVERSAL_RADIANS;
+      if (reverse) {
+        backtrack += lengths[i];
+        if (!inReverse) reversalRuns += 1;
       }
-      excursionLen += stepLen;
-      currentDir = dir;
+      inReverse = reverse;
     }
-    excursions += excursionLen;
-    const value = hasReversal && totalPath > 1e-9 ? Math.min(1, excursions / totalPath) : 0;
+    // Varias tandas de corrección son la señal humana fuerte que ya tenía la
+    // implementación anterior (valor 1); una SOLA corrección se mide por su
+    // peso real sobre el camino para no sobrepuntuar un sobrepaso de 2px.
+    const value = reversalRuns >= 2 ? 1 : linear(Math.sqrt(backtrack / totalPath), 0.06, 0.45);
     entries.push({ value, weight: steps.length });
   }
   return aggregateWeighted(entries);
@@ -625,8 +652,7 @@ function curvatureOf(prepared: PreparedSegment[]): number {
     let totalTurn = 0;
     let count = 0;
     let previous: number | null = null;
-    for (const step of steps) {
-      if (distance(step.dx, step.dy) <= 1e-9) continue;
+    for (const step of significantSteps(steps)) {
       const angle = Math.atan2(step.dy, step.dx);
       if (previous !== null) {
         totalTurn += angleDelta(angle, previous);
@@ -649,8 +675,7 @@ function directionChangesOf(prepared: PreparedSegment[]): number {
     let changes = 0;
     let count = 0;
     let previous: number | null = null;
-    for (const step of steps) {
-      if (distance(step.dx, step.dy) <= 1e-9) continue;
+    for (const step of significantSteps(steps)) {
       const angle = Math.atan2(step.dy, step.dx);
       if (previous !== null) {
         if (angleDelta(angle, previous) > DIRECTION_CHANGE_RADIANS) changes += 1;
@@ -672,7 +697,12 @@ function largeJumpsOf(prepared: PreparedSegment[]): number {
   let total = 0;
   for (const { steps } of prepared) {
     if (steps.length < 2) continue;
-    const dists = steps.map((step) => distance(step.dx, step.dy));
+    // Eventos coalescidos pueden compartir timestamp (dt = 0): miden el mismo
+    // instante, no un desplazamiento real. Incluirlos deprimía la mediana y
+    // convertía los pasos normales siguientes en "saltos grandes" falsos.
+    const usable = steps.filter((step) => step.dt > 0);
+    if (usable.length < 2) continue;
+    const dists = usable.map((step) => distance(step.dx, step.dy));
     const med = median(dists);
     if (med <= JUMP_EPS) continue;
     for (const d of dists) {
@@ -684,7 +714,9 @@ function largeJumpsOf(prepared: PreparedSegment[]): number {
 }
 
 /** L9 Zigzag: alternancia de signo de la desviación perpendicular respecto a
- *  la recta de ida del segmento. Thresholds: ratio <= 0.1 -> 0; >= 0.5 -> 1. */
+ *  la recta de ida del segmento. El suelo es RELATIVO al paso mediano (10%) con
+ *  un mínimo absoluto de 0.5px: así el mismo temblor no puntúa distinto al
+ *  cambiar el zoom del navegador. Thresholds: ratio <= 0.1 -> 0; >= 0.5 -> 1. */
 function zigzagOf(prepared: PreparedSegment[]): number {
   const entries: WeightedValue[] = [];
   for (const { samples: segment, steps } of prepared) {
@@ -693,13 +725,17 @@ function zigzagOf(prepared: PreparedSegment[]): number {
     const ay = segment[segment.length - 1].y - segment[0].y;
     const net = distance(ax, ay);
     if (net <= 1e-9) continue;
+    const perpFloor = Math.max(
+      ZIGZAG_PERP_PX,
+      0.1 * median(steps.map((step) => distance(step.dx, step.dy))),
+    );
     let changes = 0;
     let signs = 0;
     let previous = 0;
     for (const step of steps) {
       // Producto cruzado / |net| = distancia perpendicular con signo (px).
       const perp = (ax * step.dy - ay * step.dx) / net;
-      const sign = perp > ZIGZAG_PERP_PX ? 1 : perp < -ZIGZAG_PERP_PX ? -1 : 0;
+      const sign = perp > perpFloor ? 1 : perp < -perpFloor ? -1 : 0;
       if (sign !== 0) {
         if (signs > 0 && sign !== previous) changes += 1;
         previous = sign;
@@ -1711,4 +1747,44 @@ export function extractFinalMouseFeatures(
     hoverBeforeClick: hoverBeforeClickOf(aims),
     hoverIrrelevant: hoverIrrelevantOf(prepared, clicks),
   };
+}
+
+// ---------------------------------------------------------------------------
+// L11 · Repetición exacta del mismo trayecto (ítem del checklist que no tenía
+// medida propia en mouse.ts). OPT-IN y sin peso: no se añade a ninguna tabla ni
+// extractor existente, así que ningún score calibrado cambia.
+// ---------------------------------------------------------------------------
+
+/** Cuantización de la firma de un trayecto (0.5 px). */
+const EXACT_REPEAT_QUANTUM = 0.5;
+
+/**
+ * L11 · Repetición exacta: el mismo trayecto aparece dos veces. Se compara la
+ * FORMA RELATIVA de cada segmento kind-0 (sus pasos, sin la posición absoluta),
+ * cuantizada a 0.5px, con coste O(n) esperado. Un bot que reproduce una macro
+ * coincide; un humano que vuelve al mismo botón describe caminos distintos.
+ * Thresholds: share de repeticiones 0 -> 0; >= 0.5 -> 1. Menos de dos
+ * segmentos comparables -> NEUTRAL.
+ */
+export function mouseExactRepetition(samples: PointerSample[]): number {
+  const signatures = new Map<string, number>();
+  let eligible = 0;
+  for (const { steps } of prepareSegments(samples)) {
+    if (steps.length < FINAL_SYMMETRY_MIN_STEPS) continue;
+    let signature = "";
+    let meaningful = 0;
+    for (const step of steps) {
+      const dx = Math.round(step.dx / EXACT_REPEAT_QUANTUM);
+      const dy = Math.round(step.dy / EXACT_REPEAT_QUANTUM);
+      if (dx !== 0 || dy !== 0) meaningful += 1;
+      signature += `${dx},${dy};`;
+    }
+    if (meaningful < FINAL_SYMMETRY_MIN_STEPS) continue;
+    eligible += 1;
+    signatures.set(signature, (signatures.get(signature) ?? 0) + 1);
+  }
+  if (eligible < 2) return NEUTRAL;
+  let repeats = 0;
+  for (const count of signatures.values()) repeats += Math.max(0, count - 1);
+  return linear(repeats / eligible, 0, 0.5);
 }

@@ -143,11 +143,20 @@ function contactAreaOf(gestures: Gesture[]): number {
   return unit(1 - linear(cv(areas), 0.05, 0.4));
 }
 
-/** Inclinacion proxy = rotationAngle (grados). desv./360 <=0.002 -> 1. */
+/**
+ * Inclinacion proxy = rotationAngle (grados). desv./360 <=0.002 -> 1.
+ *
+ * 0 es el valor por defecto que informan los navegadores cuando el dispositivo
+ * no expone rotationAngle: no es "inclinacion constante" (que seria IA), sino
+ * dato ausente. Se descarta como en pressure/contactArea; sin al menos dos
+ * angulos reales la medida es neutra (0).
+ */
 function tiltOf(gestures: Gesture[]): number {
   const angles: number[] = [];
   for (const gesture of gestures) {
-    for (const sample of gesture.samples) angles.push(sample.rotationAngle);
+    for (const sample of gesture.samples) {
+      if (sample.rotationAngle > 0) angles.push(sample.rotationAngle);
+    }
   }
   if (angles.length < 2) return 0;
   return unit(1 - linear(stddev(angles) / 360, 0.002, 0.02));

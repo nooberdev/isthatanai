@@ -38,7 +38,7 @@
 	onMount(runAll);
 </script>
 
-<section class="at-section" aria-labelledby="at-title">
+<section class="section at-section" aria-labelledby="at-title">
 	<div class="at-content">
 		<h2 id="at-title" class="section-title">{tr("autotest.title")}</h2>
 		<p class="section-body">

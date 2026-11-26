@@ -225,7 +225,12 @@ function uniformNoiseScore(intervalsMs: number[]): number {
     if (dt > max) max = dt;
   }
   const spread = (max - min) / average;
-  const rich = new Set(intervalsMs.map((dt) => Math.round(dt))).size / intervalsMs.length;
+  // Cuantizar a 0.1 ms, no a 1 ms: redondear a 1 ms colapsa el jitter de banda
+  // estrecha (p. ej. `100 + Math.random()*20`) a ~20 valores enteros y `rich`
+  // cae bajo el umbral aunque cada retardo sea distinto. El metrónomo sigue
+  // dando un solo valor (rich ~ 0) y el ruido irregular sigue teniendo spread
+  // alto, así que ninguno se confunde con humanización falsa.
+  const rich = new Set(intervalsMs.map((dt) => Math.round(dt * 10))).size / intervalsMs.length;
   return (
     (1 - linear(spread, UNIFORM_SPREAD_LOW, UNIFORM_SPREAD_HIGH)) *
     linear(rich, UNIFORM_RICH_LOW, UNIFORM_RICH_HIGH)

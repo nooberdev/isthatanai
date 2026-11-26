@@ -195,6 +195,21 @@ export const UNTRUSTED_HIGH = 0.5;
 export const NEAR_ZERO_HOLD_LOW = 0.3;
 export const NEAR_ZERO_HOLD_HIGH = 0.85;
 
+// Correcciones de calibración derivadas de trazas reales de teclado (ver
+// tests/real-world/keyboard.test.ts). Todas pertenecen a medidas opt-in con
+// peso 0 (lane parcial / lane final): no alteran los scores existentes.
+/** Pausa cognitiva (palabra/frase/corrección) a partir de la cual no se mide
+ *  la ventaja de cambiar de mano: es ruido, no efecto del dedo. */
+export const HAND_SWITCH_OUTLIER_FACTOR = 2;
+/** Exceso de repeticiones de categoría sobre el azar para L77. */
+export const REPEAT_EXCESS_LOW = 0.1;
+export const REPEAT_EXCESS_HIGH = 0.5;
+/** Share mínimo de borrados para que L91/L92 tengan contexto de edición. */
+export const EDIT_SHARE_MIN = 0.15;
+/** Share de borrados sin selección previa que separa humano de bot en L91. */
+export const NO_SELECTION_LOW = 0.1;
+export const NO_SELECTION_HIGH = 0.4;
+
 export interface KeyboardFeatures {
   intervalRegularity: number;
   holdRegularity: number;
@@ -344,6 +359,17 @@ function keyIntervals(downs: KeySample[]): number[] {
     if (dt > 0) out.push(dt);
   }
   return out;
+}
+
+/**
+ * Descarta intervalosOUTLIER (> `factor` x mediana): pausas de palabra, frase
+ * o corrección que no forman parte del ritmo de tecleo. Evita que un humano
+ * que piensa parezca un metrónomo o que no "caliente".
+ */
+function trimCognitivePauses(intervals: number[], factor = HAND_SWITCH_OUTLIER_FACTOR): number[] {
+  if (intervals.length < 4) return intervals;
+  const cutoff = factor * median(intervals);
+  return intervals.filter((dt) => dt <= cutoff);
 }
 
 /** Coeficiente de variación: 0 si hay menos de 2 valores o media ~0. */
@@ -653,7 +679,13 @@ export function keyboardSelectionDeletion(keys: KeySample[]): number {
   if (backs.length < 2) return 0;
   const arrows = downs.filter((sample) => sample.category === ARROW);
   const modifiers = downs.filter((sample) => sample.category === MODIFIER);
-  if (arrows.length === 0 || modifiers.length === 0) return 1;
+  if (arrows.length === 0 || modifiers.length === 0) {
+    // FIX: devolver 1 aquí acusaba a cualquier humano que corrige con
+    // backspace sin seleccionar (lo habitual). Sin evidencia de selección,
+    // el único proxy fiable es la FRECUENCIA de borrados: un bot que solo
+    // borra encadena borrados; un humano intercala un par entre mucho texto.
+    return linear(backs.length / downs.length, NO_SELECTION_LOW, NO_SELECTION_HIGH);
+  }
   // Ataque de coste: la forma ingenua era O(backs × mods × arrows). Solo
   // importan los tiempos, así que ordenamos y buscamos por intervalos: la
   // decisión (existe mod dentro de GAP de algún arrow previo) es idéntica.
@@ -706,7 +738,11 @@ export function keyboardSelectionDeletion(keys: KeySample[]): number {
 export function keyboardArrowUsage(keys: KeySample[]): number {
   const downs = keyDowns(keys);
   if (downs.length < 5) return 0;
-  if (!downs.some((sample) => sample.category === BACKSPACE)) return 0;
+  const edits = downs.filter((sample) => sample.category === BACKSPACE).length;
+  if (edits === 0) return 0;
+  // FIX: un par de backspaces en un párrafo largo no es "editar sin flechas":
+  // es una corrección anecdótica. Sin volumen de edición no hay evidencia.
+  if (edits / downs.length < EDIT_SHARE_MIN) return 0;
   const arrows = downs.filter((sample) => sample.category === ARROW).length;
   return 1 - linear(arrows / downs.length, ARROW_USAGE_LOW, ARROW_USAGE_HIGH);
 }
@@ -1110,11 +1146,18 @@ export function keyboardLetterPairs(keys: KeySample[]): number {
 export function keyboardHandSwitch(keys: KeySample[]): number {
   const downs = keyDowns(keys);
   if (downs.length < 5) return KEYBOARD_NEUTRAL;
+  const all = keyIntervals(downs);
+  if (all.length < 4) return KEYBOARD_NEUTRAL;
+  // FIX: las pausas de palabra/frase/corrección son cognitivas, no un efecto
+  // de cambiar de mano. Incluirlas hacía que un párrafo humano (letras +
+  // espacios + algún backspace) puntuara 1 = bot. Se descartan los intervalos
+  // fuera de la banda normal (>{factor x} mediana) antes de clasificar.
+  const cutoff = HAND_SWITCH_OUTLIER_FACTOR * median(all);
   const switchTimes: number[] = [];
   const stayTimes: number[] = [];
   for (let i = 1; i < downs.length; i += 1) {
     const dt = downs[i].t - downs[i - 1].t;
-    if (dt <= 0) continue;
+    if (dt <= 0 || dt > cutoff) continue;
     const changed = downs[i - 1].category % 2 !== downs[i].category % 2;
     (changed ? switchTimes : stayTimes).push(dt);
   }
@@ -1129,19 +1172,34 @@ export function keyboardHandSwitch(keys: KeySample[]): number {
 export function keyboardRepeatedKey(keys: KeySample[]): number {
   const downs = keyDowns(keys);
   if (downs.length < 4) return KEYBOARD_NEUTRAL;
+  const counts = new Map<KeySample["category"], number>();
+  for (const sample of downs) counts.set(sample.category, (counts.get(sample.category) ?? 0) + 1);
   let repeated = 0;
   for (let i = 1; i < downs.length; i += 1) {
     if (downs[i].category === downs[i - 1].category) repeated += 1;
   }
-  return linear(repeated / (downs.length - 1), 0.2, 0.7);
+  // FIX: "categoría repetida" no es "tecla repetida": todas las letras son
+  // categoría 0, así que escribir palabras normales daba ~0.83 (bot). Si solo
+  // aparece una categoría no hay forma de distinguirlo (se mantiene el 1
+  // degenerado de la calibración); con varias, se mide el EXCESO sobre el
+  // azar de encontrar la misma categoría por yuxtaposición.
+  if (counts.size <= 1) return 1;
+  const n = downs.length;
+  let chance = 0;
+  for (const count of counts.values()) chance += (count / n) * (count / n);
+  return linear(repeated / (n - 1) - chance, REPEAT_EXCESS_LOW, REPEAT_EXCESS_HIGH);
 }
 
 /** L80 · Aceleración al calentar: el humano reduce el intervalo en la segunda
  *  mitad; el bot mantiene el mismo ritmo. Thresholds: ratio(first/last)
  *  <= 1.0 -> 1 (sin mejora, IA), >= 1.5 -> 0 (calienta). */
 export function keyboardWarmupAcceleration(keys: KeySample[]): number {
-  const intervals = keyIntervals(keyDowns(keys));
-  if (intervals.length < 6) return KEYBOARD_NEUTRAL;
+  const raw = keyIntervals(keyDowns(keys));
+  if (raw.length < 6) return KEYBOARD_NEUTRAL;
+  // FIX: una pausa de pensamiento al final del párrafo duplicaba la media de
+  // la segunda mitad y acusaba "sin calentamiento" a un humano real.
+  const intervals = trimCognitivePauses(raw);
+  if (intervals.length < 4) return KEYBOARD_NEUTRAL;
   const half = Math.floor(intervals.length / 2);
   const first = mean(intervals.slice(0, half));
   const last = mean(intervals.slice(half));
@@ -1164,8 +1222,12 @@ export function keyboardFirstKeyPause(keys: KeySample[]): number {
  *  Un bot con intervalo fijo da correlación 0 -> IA.
  *  Thresholds: |correlación| <= 0 -> 1, >= 0.5 -> 0. */
 export function keyboardRhythmByTextLength(keys: KeySample[]): number {
-  const intervals = keyIntervals(keyDowns(keys));
-  if (intervals.length < 5) return KEYBOARD_NEUTRAL;
+  const raw = keyIntervals(keyDowns(keys));
+  if (raw.length < 5) return KEYBOARD_NEUTRAL;
+  // FIX: las pausas cognitivas dispersas anulaban la correlación de un humano
+  // que sí cambia de ritmo según avanza el texto.
+  const intervals = trimCognitivePauses(raw);
+  if (intervals.length < 4) return KEYBOARD_NEUTRAL;
   const index = intervals.map((_, i) => i);
   return 1 - linear(Math.abs(finalCorrelation(index, intervals)), 0, 0.5);
 }
