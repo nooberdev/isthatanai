@@ -43,15 +43,6 @@
 		ia: "var(--color-verdict-ia)"
 	};
 
-	// Colores planos de la línea de scroll, distintos de los del hero: mismo
-	// relleno drenched que antes, ahora como indicador inferior.
-	const LINE_FILL: Record<VerdictState, string> = {
-		midiendo: "#E5E5EA",
-		humano: "#B4FF2E",
-		ia: "#FF432E"
-	};
-	const LINE_DOUBT_FILL = "#FFC400";
-
 	// Textos de reserva de la Etapa 3: se usan solo si la librería no da razones.
 	const FALLBACK_REASON: Record<VerdictState, string> = {
 		midiendo: "esperando movimiento",
@@ -229,15 +220,8 @@
 	let baseColor = $derived(stateColor(baseState, doubt));
 	let topColor = $derived(stateColor(effectiveState, doubt));
 
-	// Color de la línea: el estado manda; la duda sustituye el color por ámbar
-	// plano a través de la misma prop `color`.
-	let lineColor = $derived(
-		effectiveState === "midiendo"
-			? LINE_FILL.midiendo
-			: showQuestion
-				? LINE_DOUBT_FILL
-				: LINE_FILL[effectiveState]
-	);
+	// La línea usa exactamente el color del hero, con el mismo matiz de duda.
+	let lineColor = $derived(stateColor(effectiveState, doubt));
 
 	// Sondeo ~4 Hz: onVerdict solo dispara al cambiar el estado.
 	$effect(() => {
