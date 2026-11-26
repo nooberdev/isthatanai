@@ -54,6 +54,9 @@
   --color-verdict-ia: #c42b2b;
   --color-verdict-ia-doubt: #a05a0a;
   --color-ink: #ffffff;
+  /* Progreso de scroll del hero (0 en reposo, 1 al pasar la portada). Lo
+     publica +page.svelte; el fallback mantiene la portada intacta en SSR. */
+  --hero-progress: 0;
 }
 
 .dark {
@@ -282,6 +285,14 @@ html {
   align-items: center;
   gap: 2rem;
   padding: 2rem 1.25rem 0;
+  /* El contenido se funde en el badge con el mismo progreso y el mismo eje:
+     opacidad 1→0 y una contracción mínima, sin rebote. */
+  opacity: calc(1 - var(--hero-progress, 0));
+  transform: scale(calc(1 - 0.04 * var(--hero-progress, 0)));
+  transform-origin: center center;
+  transition:
+    opacity var(--dur-220) var(--ease-out),
+    transform var(--dur-220) var(--ease-out);
 }
 
 .score-line {
@@ -431,5 +442,12 @@ html {
     transform: none;
     clip-path: none;
     transition: opacity var(--dur-180) linear;
+  }
+  /* Sin interpolación del progreso: el hero queda quieto y el badge entra
+     por opacidad simple al cruzar el umbral (lo gobierna .is-visible). */
+  .hero-content {
+    opacity: 1;
+    transform: none;
+    transition: none;
   }
 }

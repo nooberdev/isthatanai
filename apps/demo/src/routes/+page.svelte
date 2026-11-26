@@ -102,8 +102,9 @@
 	let prevCommitted = $state<VerdictState>("midiendo");
 	let willClip = $state(false);
 
-	// El badge solo vive fuera de la portada: se mide contra la altura real del
-	// hero, no contra un valor fijo, para respetar 100dvh y el gutter de scroll.
+	// El badge nace del hero: se mide contra la altura real del hero, no contra
+	// un valor fijo, para respetar 100dvh y el gutter de scroll. El progreso se
+	// publica como --hero-progress para que hero y badge compartan el mismo eje.
 	let heroEl = $state<HTMLElement | null>(null);
 	let badgeVisible = $state(false);
 
@@ -221,8 +222,8 @@
 	let baseColor = $derived(stateColor(baseState, doubt));
 	let topColor = $derived(stateColor(effectiveState, doubt));
 
-	// Badge: colores planos del sistema. Con duda se usa el ámbar del veredicto,
-	// que es lo que distingue al "?" del estado normal.
+	// Badge: solo el punto tiñe el estado; la superficie y la tinta son neutrales.
+	// Con duda se usa el ámbar del veredicto, que matiza el "?" sin gritar.
 	let badgeColor = $derived(
 		effectiveState === "midiendo"
 			? STATE_COLOR.midiendo
@@ -232,9 +233,6 @@
 					: "var(--color-verdict-ia-doubt)"
 				: STATE_COLOR[effectiveState]
 	);
-	// Tinta por contraste ≥4.5:1: blanca sobre verde, rojo y ámbar oscuro;
-	// negra sobre el ámbar claro de la duda humana.
-	let badgeInk = $derived(showQuestion && effectiveState === "humano" ? "#000000" : "#ffffff");
 
 	// Sondeo ~4 Hz: onVerdict solo dispara al cambiar el estado.
 	$effect(() => {
@@ -283,14 +281,17 @@
 		urlOverride = stateFromUrl();
 		setupSectionReveal();
 
-		// Umbral del badge: el hero ocupa la primera pantalla; al pasarla,
-		// el veredicto sigue vivo en la esquina. Inmediato al cargar scrolled.
-		const updateBadge = () => {
+		// Progreso 0→1 del hero: el contenido se desvanece mientras el badge
+		// entra con la misma curva. Umbral mínimo para que en reposo (p = 0) no
+		// quede ningún artefacto. Inmediato al cargar ya scrolleado.
+		const updateScroll = () => {
 			const heroHeight = heroEl?.offsetHeight ?? window.innerHeight;
-			badgeVisible = window.scrollY > heroHeight * 0.9;
+			const p = clamp01(window.scrollY / Math.max(heroHeight, 1));
+			badgeVisible = p > 0.01;
+			document.documentElement.style.setProperty("--hero-progress", p.toFixed(4));
 		};
-		window.addEventListener("scroll", updateBadge, { passive: true });
-		updateBadge();
+		window.addEventListener("scroll", updateScroll, { passive: true });
+		updateScroll();
 
 		// Única instancia de la librería: se crea y arranca aquí, nunca en el módulo.
 		const instance = new IsThatAnAI({ mouse: { bufferSize: 400, maxAgeMs: 4000 } });
@@ -308,7 +309,7 @@
 
 		return () => {
 			offVerdict();
-			window.removeEventListener("scroll", updateBadge);
+			window.removeEventListener("scroll", updateScroll);
 			window.removeEventListener("pointermove", onRevealPointer);
 			instance.stop();
 			detector = null;
@@ -370,7 +371,6 @@
 	score={scoreText}
 	question={showQuestion}
 	color={badgeColor}
-	ink={badgeInk}
 	visible={badgeVisible}
 />
 
