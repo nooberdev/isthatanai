@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { resolve } from "$app/paths";
 	import { tr } from "#lib/i18n";
 
 	interface Props {
@@ -64,7 +65,7 @@
 	<div class="page-controls__bar" role="group" aria-label={tr("controls.group.aria")}>
 		<a
 			class="ctl"
-			href="/docs"
+			href={resolve('/docs')}
 			aria-label="Documentation"
 			title="Documentation"
 		>

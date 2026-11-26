@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { resolve } from "$app/paths";
 
 	type Section = { id: string; label: string };
 
@@ -191,7 +192,7 @@
 <div class="docs-page">
 	<header class="docs-header">
 		<div class="docs-header__inner">
-			<a class="brand" href="/" aria-label="is that an ai? — home">
+			<a class="brand" href={resolve('/')} aria-label="is that an ai? — home">
 				is that an ai<span class="brand__mark">?</span>
 			</a>
 			<span class="docs-header__sep" aria-hidden="true"></span>
@@ -209,7 +210,7 @@
 						>{dark ? "light_mode" : "dark_mode"}</span
 					>
 				</button>
-				<a class="header-link" href="/">
+				<a class="header-link" href={resolve('/')}>
 					Back to demo
 					<span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
 				</a>
