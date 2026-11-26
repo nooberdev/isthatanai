@@ -1,5 +1,6 @@
 {
   "name": "is-that-an-ai-monorepo",
+  "version": "0.1.0",
   "private": true,
   "workspaces": [
     "packages/*",
@@ -8,9 +9,12 @@
   "scripts": {
     "dev": "bun run --filter=demo dev",
     "build": "bun run --filter=is-that-an-ai build",
+    "build:all": "bun run build && bun run --filter=demo build",
     "test": "bun test",
     "typecheck": "bun run --filter=is-that-an-ai typecheck && bun run --filter=demo typecheck",
     "lint": "biome check .",
+    "check": "bun run typecheck && bun run lint && bun run test",
+    "verify": "bun run build:all && bun run check && bun run check:package",
     "check:package": "bun tools/check-bundle.ts && bun run --filter=is-that-an-ai build"
   },
   "devDependencies": {
