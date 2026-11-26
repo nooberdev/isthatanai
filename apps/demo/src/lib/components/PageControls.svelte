@@ -65,7 +65,7 @@
 	<div class="page-controls__bar" role="group" aria-label={tr("controls.group.aria")}>
 		<a
 			class="ctl"
-			href={resolve('/docs')}
+			href={resolve('/docs/')}
 			aria-label="Documentation"
 			title="Documentation"
 		>

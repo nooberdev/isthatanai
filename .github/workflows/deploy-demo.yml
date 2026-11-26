@@ -35,6 +35,9 @@ jobs:
           BASE_PATH: /isthatanai
         run: bun run --filter=demo build
 
+      - name: Create Pages directory indexes
+        run: bun run prepare:pages
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3

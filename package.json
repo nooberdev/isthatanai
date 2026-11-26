@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "bun run --filter=demo dev",
     "build": "bun run --filter=is-that-an-ai build",
-    "build:all": "bun run build && bun run --filter=demo build",
+    "build:all": "bun run build && bun run --filter=demo build && bun run prepare:pages",
+    "prepare:pages": "bun tools/pages-indexes.ts",
     "test": "bun test",
     "typecheck": "bun run --filter=is-that-an-ai typecheck && bun run --filter=demo typecheck",
     "lint": "biome check .",
