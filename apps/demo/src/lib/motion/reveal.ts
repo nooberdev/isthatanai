@@ -1,10 +1,8 @@
 /**
  * Entrada de las secciones: la propia sección es la carta (superficie, borde,
  * radio y sombra en layout.css) y se activa con `.is-visible` cuando entra en
- * el viewport. El IntersectionObserver observa la SECCIÓN y no sus hijos: el
- * título ya no lleva clip-path, pero observar el bloque completo evita
- * depender de la geometría de recortes internos. No se toca el DOM: título y
- * cuerpo siguen siendo hijos directos de `.section`.
+ * el viewport. El IntersectionObserver observa la SECCIÓN: ya no tiene clip-path
+ * (recortaba a sus hijos y hacía que nunca se activara). No se toca el DOM.
  */
 export function setupSectionReveal(): () => void {
   if (typeof document === "undefined") return () => {};

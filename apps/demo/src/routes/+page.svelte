@@ -12,6 +12,7 @@
 	import TrailCanvas from "#lib/components/TrailCanvas.svelte";
 	import CustomCursor from "#lib/components/CustomCursor.svelte";
 	import PageControls from "#lib/components/PageControls.svelte";
+	import VerdictBadge from "#lib/components/VerdictBadge.svelte";
 	import DevPanel from "#lib/components/DevPanel.svelte";
 	import ClickTest from "#lib/components/sections/ClickTest.svelte";
 	import TypingTest from "#lib/components/sections/TypingTest.svelte";
@@ -100,6 +101,11 @@
 	let baseState = $state<VerdictState>("midiendo");
 	let prevCommitted = $state<VerdictState>("midiendo");
 	let willClip = $state(false);
+
+	// El badge solo vive fuera de la portada: se mide contra la altura real del
+	// hero, no contra un valor fijo, para respetar 100dvh y el gutter de scroll.
+	let heroEl = $state<HTMLElement | null>(null);
+	let badgeVisible = $state(false);
 
 	// Instancia única, creada en onMount (nunca a nivel de módulo: SSR-safe).
 	let detector = $state<IsThatAnAI | null>(null);
@@ -215,6 +221,21 @@
 	let baseColor = $derived(stateColor(baseState, doubt));
 	let topColor = $derived(stateColor(effectiveState, doubt));
 
+	// Badge: colores planos del sistema. Con duda se usa el ámbar del veredicto,
+	// que es lo que distingue al "?" del estado normal.
+	let badgeColor = $derived(
+		effectiveState === "midiendo"
+			? STATE_COLOR.midiendo
+			: showQuestion
+				? effectiveState === "humano"
+					? "var(--color-verdict-humano-doubt)"
+					: "var(--color-verdict-ia-doubt)"
+				: STATE_COLOR[effectiveState]
+	);
+	// Tinta por contraste ≥4.5:1: blanca sobre verde, rojo y ámbar oscuro;
+	// negra sobre el ámbar claro de la duda humana.
+	let badgeInk = $derived(showQuestion && effectiveState === "humano" ? "#000000" : "#ffffff");
+
 	// Sondeo ~4 Hz: onVerdict solo dispara al cambiar el estado.
 	$effect(() => {
 		const d = detector;
@@ -262,6 +283,15 @@
 		urlOverride = stateFromUrl();
 		setupSectionReveal();
 
+		// Umbral del badge: el hero ocupa la primera pantalla; al pasarla,
+		// el veredicto sigue vivo en la esquina. Inmediato al cargar scrolled.
+		const updateBadge = () => {
+			const heroHeight = heroEl?.offsetHeight ?? window.innerHeight;
+			badgeVisible = window.scrollY > heroHeight * 0.9;
+		};
+		window.addEventListener("scroll", updateBadge, { passive: true });
+		updateBadge();
+
 		// Única instancia de la librería: se crea y arranca aquí, nunca en el módulo.
 		const instance = new IsThatAnAI({ mouse: { bufferSize: 400, maxAgeMs: 4000 } });
 		detector = instance;
@@ -278,6 +308,7 @@
 
 		return () => {
 			offVerdict();
+			window.removeEventListener("scroll", updateBadge);
 			window.removeEventListener("pointermove", onRevealPointer);
 			instance.stop();
 			detector = null;
@@ -290,7 +321,8 @@
 </svelte:head>
 
 <main class="page-root">
-	<section class="hero" data-state={effectiveState}>
+	<div class="hero-snap-anchor" aria-hidden="true"></div>
+	<section class="hero" data-state={effectiveState} bind:this={heroEl}>
 		<TrailCanvas {detector} score={libVerdict.score} enabled={trailEnabled} />
 		<div
 			class="verdict-layers"
@@ -332,6 +364,15 @@
 </main>
 
 <PageControls bind:trailEnabled bind:cursorEnabled onReset={resetSession} />
+
+<VerdictBadge
+	label={WORD[effectiveState]}
+	score={scoreText}
+	question={showQuestion}
+	color={badgeColor}
+	ink={badgeInk}
+	visible={badgeVisible}
+/>
 
 <CustomCursor enabled={cursorEnabled} />
 

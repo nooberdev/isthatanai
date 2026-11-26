@@ -155,12 +155,13 @@ html.has-custom-cursor * {
 }
 
 /* ---- Scroll: el documento es el contenedor de snap ------------------------
-   Parada obligatoria: cada sección es un punto de snap y el gesto no puede
-   saltarse ninguna. El hero sigue siendo sticky a 100dvh; la hoja de
-   secciones se desliza por encima. La reserva de gutter evita salto de layout
-   cuando aparece la scrollbar.                                             */
+   Snap de proximidad: cada sección es un punto de snap y `scroll-snap-stop:
+   always` mantiene la parada por carta sin atrapar el scroll (con mandatory
+   una rueda real se quedaba en el primer punto). El hero sigue siendo sticky
+   a 100dvh; la hoja de secciones se desliza por encima. La reserva de gutter
+   evita salto de layout cuando aparece la scrollbar.                       */
 html {
-  scroll-snap-type: y mandatory;
+  scroll-snap-type: y proximity;
   scrollbar-gutter: stable;
   caret-color: var(--foreground);
 }
@@ -198,12 +199,25 @@ html {
 }
 
 /* ---- Movimiento: pantalla principal (hero) ---- */
+/* Ancla estática en y=0. El hero es sticky y su snap area viaja con el
+   scroll, así que por sí solo no deja volver a la portada: este punto fijo
+   es el que permite terminar el gesto en y=0. Ocupa 0px: no cambia el hero. */
+.hero-snap-anchor {
+  height: 0;
+  scroll-snap-align: start;
+  scroll-snap-stop: normal;
+}
+
 .hero {
   position: sticky;
   top: 0;
   height: 100dvh;
   z-index: 0;
   overflow: hidden;
+  /* La portada también es un destino de snap; subir no queda trabado en la
+     primera sección (scroll-snap-stop: always). */
+  scroll-snap-align: start;
+  scroll-snap-stop: normal;
   /* Ink de la palabra (variables por estado en hero[data-state]) */
   --word-ink: #fff;
 }
@@ -343,18 +357,23 @@ html {
     0 2px 8px -4px color-mix(in srgb, var(--foreground) 12%, transparent);
   scroll-snap-align: start;
   scroll-snap-stop: always;
-  /* Entrada única de la carta: se levanta y se coloca en una sola dirección;
-     el snap aporta el resto del movimiento. Dentro no anima nada por separado. */
+  /* Entrada única de la carta: opacidad y un desplazamiento mínimo. Sin
+     clip-path: recorta también a los hijos y el IntersectionObserver deja
+     de ver la sección, que quedaría invisible. */
   opacity: 0;
-  transform: translateY(18px) scale(0.985);
+  transform: translateY(18px) scale(0.99);
+  /* Salida (si llega a darse) más corta que la entrada. */
   transition:
-    opacity var(--dur-220) var(--ease-out),
-    transform var(--dur-220) var(--ease-out);
+    opacity var(--dur-180) var(--ease-out),
+    transform var(--dur-180) var(--ease-out);
 }
 
 .section.is-visible {
   opacity: 1;
   transform: translateY(0) scale(1);
+  transition:
+    opacity var(--dur-320) var(--ease-out),
+    transform var(--dur-320) var(--ease-out);
 }
 
 @supports (padding: env(safe-area-inset-top)) {
@@ -406,10 +425,11 @@ html {
     animation: none;
     clip-path: circle(150vmax at var(--rx) var(--ry));
   }
-  /* La carta ya está colocada, sin transformaciones: aparece al instante. */
-  .section {
-    opacity: 1;
+  /* Sin recorte ni desplazamiento: solo fundido, sin estado intermedio. */
+  .section,
+  .section.is-visible {
     transform: none;
-    transition: none;
+    clip-path: none;
+    transition: opacity var(--dur-180) linear;
   }
 }
