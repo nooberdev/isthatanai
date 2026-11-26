@@ -12,8 +12,8 @@
 
 **Numeric signals only · No network · No storage · SSR-safe · 12 languages · v0.1.0**
 
-[Live demo](https://nooberdev.github.io/is-that-an-ai/) ·
-[Documentation](https://nooberdev.github.io/is-that-an-ai/docs/) ·
+[Live demo](https://nooberdev.github.io/isthatanai/) ·
+[Documentation](https://nooberdev.github.io/isthatanai/docs/) ·
 [Real-world audit](./REAL_WORLD_AUDIT.md) ·
 [Lab report](./LAB_REPORT.md) ·
 [Threat model](./SECURITY.md)
