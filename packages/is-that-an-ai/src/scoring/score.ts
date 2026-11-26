@@ -10,16 +10,45 @@
 //
 // Confianza: promedio de saturación: min(muestras / 25, 1) y min(ventanaMs / 2000, 1).
 
+import {
+  type ClickFeatures,
+  clickReasons,
+  computeClickScore,
+  extractClickFeatures,
+} from "../features/click";
 import { countSegments, extractMouseFeatures, type MouseFeatures } from "../features/mouse";
-import type { PointerSample, Verdict } from "../types";
+import {
+  computeScrollScore,
+  extractScrollFeatures,
+  type ScrollFeatures,
+  scrollReasons,
+} from "../features/scroll";
+import type { ClickSample, PointerSample, ScrollSample, SignalScores, Verdict } from "../types";
 import { clamp } from "../utils/math";
 import { type FeatureWeights, weights } from "./weights";
 
 /** Mínimo de segmentos (pasos kind-0) para emitir score. */
 export const MIN_SEGMENTS = 10;
 
-/** Mínima duración de la ventana en ms para emitir score. */
+/** Mínima duración de la ventana en ms para emitir score (todas las señales). */
 export const MIN_WINDOW_MS = 400;
+
+/**
+ * Evidencia mínima para las señales nuevas:
+ * - clics: >= 6 eventos (3 pares down/up) y ventana >= MIN_WINDOW_MS.
+ * - scrolls: >= 8 eventos y ventana >= MIN_WINDOW_MS.
+ * Por debajo de esos umbrales la señal se ignora (null) y el resultado es
+ * exactamente el del scoring de mouse original.
+ */
+export const MIN_CLICKS = 6;
+export const MIN_SCROLLS = 8;
+
+/**
+ * Pesos de combinación entre señales. Se normalizan entre las señales con
+ * evidencia suficiente: con solo mouse el peso efectivo es 1 (idéntico al
+ * comportamiento anterior); con las tres señales, 0.6 / 0.2 / 0.2.
+ */
+export const SIGNAL_WEIGHTS = { mouse: 0.6, click: 0.2, scroll: 0.2 } as const;
 
 /**
  * Bandas de decisión: score <= HUMAN_MAX -> human, >= AI_MIN -> ai. En la
@@ -133,31 +162,97 @@ function movementSamples(samples: PointerSample[]): number {
  */
 export class ScoreComputer {
   private ema: number | null = null;
+  private signalScores: SignalScores = { mouse: null, click: null, scroll: null };
 
-  /** Borra el EMA y la ventana de evidencia interna. */
+  /** Borra el EMA, los scores por señal y la ventana de evidencia interna. */
   reset(): void {
     this.ema = null;
+    this.signalScores = { mouse: null, click: null, scroll: null };
   }
 
-  evaluate(samples: PointerSample[], windowMs: number): ScoredEvidence {
+  /** Último score por señal calculado (null si esa señal no tenía evidencia). */
+  getSignalScores(): SignalScores {
+    return { ...this.signalScores };
+  }
+
+  /**
+   * Evalúa todas las señales disponibles. Los argumentos `clicks`/`scrolls`
+   * son opcionales: al omitirlos (o al no alcanzar su evidencia mínima) el
+   * resultado es IDÉNTICO al scoring de mouse original, incluido el EMA.
+   */
+  evaluate(
+    samples: PointerSample[],
+    windowMs: number,
+    clicks: ClickSample[] = [],
+    scrolls: ScrollSample[] = [],
+  ): ScoredEvidence {
     const segmentCount = countSegments(samples);
     const moveCount = movementSamples(samples);
-    const hasEvidence =
+    const hasMouse =
       samples.length > 0 &&
       (segmentCount >= MIN_SEGMENTS || moveCount >= MIN_SEGMENTS) &&
       windowMs >= MIN_WINDOW_MS;
-    if (!hasEvidence) {
+
+    const clickWindowMs = clicks.length >= 2 ? clicks[clicks.length - 1].t - clicks[0].t : 0;
+    const scrollWindowMs = scrolls.length >= 2 ? scrolls[scrolls.length - 1].t - scrolls[0].t : 0;
+    const hasClick = clicks.length >= MIN_CLICKS && clickWindowMs >= MIN_WINDOW_MS;
+    const hasScroll = scrolls.length >= MIN_SCROLLS && scrollWindowMs >= MIN_WINDOW_MS;
+
+    const mouseFeatures: MouseFeatures | null = hasMouse ? extractMouseFeatures(samples) : null;
+    const clickFeatures: ClickFeatures | null = hasClick ? extractClickFeatures(clicks) : null;
+    const scrollFeatures: ScrollFeatures | null = hasScroll ? extractScrollFeatures(scrolls) : null;
+
+    this.signalScores = {
+      mouse: mouseFeatures ? computeScore(mouseFeatures) : null,
+      click: clickFeatures ? computeClickScore(clickFeatures) : null,
+      scroll: scrollFeatures ? computeScrollScore(scrollFeatures) : null,
+    };
+
+    if (!hasMouse && !hasClick && !hasScroll) {
       return { score: null, confidence: 0, reasons: [] };
     }
-    const features = extractMouseFeatures(samples);
-    const raw = computeScore(features);
+
+    // Combinación ponderada entre señales CON evidencia; se normaliza por la
+    // suma de pesos usados. Con solo mouse da el score del mouse (peso 1).
+    let weighted = 0;
+    let weightTotal = 0;
+    if (hasMouse) {
+      weighted += SIGNAL_WEIGHTS.mouse * (this.signalScores.mouse as number);
+      weightTotal += SIGNAL_WEIGHTS.mouse;
+    }
+    if (hasClick) {
+      weighted += SIGNAL_WEIGHTS.click * (this.signalScores.click as number);
+      weightTotal += SIGNAL_WEIGHTS.click;
+    }
+    if (hasScroll) {
+      weighted += SIGNAL_WEIGHTS.scroll * (this.signalScores.scroll as number);
+      weightTotal += SIGNAL_WEIGHTS.scroll;
+    }
+    const raw = weightTotal > 0 ? weighted / weightTotal : 0.5;
+
     const smoothed = this.ema === null ? raw : EMA_ALPHA * raw + (1 - EMA_ALPHA) * this.ema;
     this.ema = clamp(smoothed, 0, 1);
+
+    // La misma fórmula de confianza del mouse, extendida con el resto de
+    // señales solo cuando aportan evidencia. Con solo mouse es idéntica.
+    const evidenceCount =
+      moveCount + (hasClick ? clicks.length : 0) + (hasScroll ? scrolls.length : 0);
+    const maxWindowMs = Math.max(
+      windowMs,
+      hasClick ? clickWindowMs : 0,
+      hasScroll ? scrollWindowMs : 0,
+    );
     const confidence = clamp(
-      0.5 * (Math.min(moveCount / 25, 1) + Math.min(windowMs / 2000, 1)),
+      0.5 * (Math.min(evidenceCount / 25, 1) + Math.min(maxWindowMs / 2000, 1)),
       0,
       1,
     );
-    return { score: this.ema, confidence, reasons: scoreReasons(features) };
+
+    const reasons: string[] = [];
+    if (mouseFeatures) reasons.push(...scoreReasons(mouseFeatures));
+    if (clickFeatures) reasons.push(...clickReasons(clickFeatures));
+    if (scrollFeatures) reasons.push(...scrollReasons(scrollFeatures));
+
+    return { score: this.ema, confidence, reasons };
   }
 }

@@ -7,7 +7,8 @@
 - ✅ **Etapa 3 terminada:** la librería captura el mouse de verdad y la estela usa esos datos.
 - ✅ **Detección preliminar calibrada** con una sesión real de trackpad y 4 agentes: trackpad humano → HUMANO, bot recto → AGENTE. Falta validación con más personas y dispositivos.
 - ✅ **Etapa 4 terminada y calibrada:** 10 medidas reales, score 0–1, razones y sesgo a humano hasta evidencia sostenida.
-- 🔄 **Etapa 5 parcial:** grabador local y extensión Firefox listos; demo pública pendiente.
+- ✅ **Etapa 5 terminada:** demo pública beta en GitHub Pages, grabador local y extensión Firefox; el código fuente de la web es privado y solo la librería es pública.
+- ✅ **Etapa 6 terminada:** recolectores y 7 medidas de clics y 7 de scroll, combinadas al score solo con evidencia; botón medio y autoscroll tratados aparte.
 
 ## Etapas
 
@@ -36,7 +37,7 @@ Con eso sale un puntaje 0–1 (más alto = más probable IA) y razones en palabr
 
 **Listo cuando:** el semáforo y el color de la estela responden a ese puntaje real.
 
-### Etapa 5 — demo pública y grabador ← grabador local y extensión Firefox listos; demo pública pendiente
+### Etapa 5 — demo pública y grabador ✅
 
 Subir la demo a una dirección pública y activar el grabador de sesiones. Va pronto a propósito: así se puede empezar a juntar datos mientras se sigue programando.
 
@@ -44,7 +45,7 @@ Subir la demo a una dirección pública y activar el grabador de sesiones. Va pr
 
 **Listo cuando:** tú, el Grok Bot y cualquiera con el link pueden dejar una sesión grabada.
 
-### Etapa 6 — clics y scroll
+### Etapa 6 — clics y scroll ✅
 
 - Clicks: puntería, duración, ráfagas, ritmo.
 - Scroll: velocidad, ritmo, saltos, dirección, inercia.

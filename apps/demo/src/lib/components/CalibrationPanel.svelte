@@ -1,16 +1,35 @@
 <script lang="ts">
 	// Calibración (Etapa 4/5): medidas en tiempo real + grabador de sesiones.
 	// Subcomponente de DevPanel; solo se renderiza en desarrollo.
-	import type { MouseFeatures, PointerSample, Verdict } from "is-that-an-ai";
+	import type {
+		ClickSample,
+		MouseFeatures,
+		PointerSample,
+		ScrollSample,
+		Verdict
+	} from "is-that-an-ai";
+
+	// Forma estructural de las señales (una por señal, null sin evidencia).
+	interface SignalScores {
+		mouse: number | null;
+		click: number | null;
+		scroll: number | null;
+	}
 
 	let {
 		getMouseFeatures,
 		getRecentPoints,
-		getVerdict
+		getVerdict,
+		getSignalScores,
+		getRecentClicks,
+		getRecentScrolls
 	}: {
 		getMouseFeatures: () => MouseFeatures | null;
 		getRecentPoints: (sinceSeq?: number) => PointerSample[];
 		getVerdict: () => Verdict;
+		getSignalScores: () => SignalScores;
+		getRecentClicks: (sinceSeq?: number) => ClickSample[];
+		getRecentScrolls: (sinceSeq?: number) => ScrollSample[];
 	} = $props();
 
 	type RecLabel = "humano" | "bot";
@@ -19,6 +38,7 @@
 		t: number;
 		score: number | null;
 		features: MouseFeatures | null;
+		signalScores: SignalScores;
 	}
 
 	interface ExportPayload {
@@ -29,6 +49,8 @@
 		durationMs: number;
 		sampleCount: number;
 		samples: PointerSample[];
+		clicks: ClickSample[];
+		scrolls: ScrollSample[];
 		snapshots: Snapshot[];
 	}
 
@@ -62,7 +84,11 @@
 	let endedAtMs = $state(0);
 	let durationMs = $state(0);
 	let lastSeq = 0;
+	let lastClickSeq = 0;
+	let lastScrollSeq = 0;
 	let samples = $state<PointerSample[]>([]);
+	let clicks = $state<ClickSample[]>([]);
+	let scrolls = $state<ScrollSample[]>([]);
 	let snapshots = $state<Snapshot[]>([]);
 	let sampleTimer: ReturnType<typeof setInterval> | null = null;
 	let snapshotTimer: ReturnType<typeof setInterval> | null = null;
@@ -73,16 +99,36 @@
 
 	function onSamplesTick(): void {
 		const pts = getRecentPoints(lastSeq);
-		if (pts.length === 0) return;
-		for (const p of pts) {
-			samples.push(p);
+		if (pts.length > 0) {
+			for (const p of pts) {
+				samples.push(p);
+			}
+			lastSeq = pts[pts.length - 1].seq;
 		}
-		lastSeq = pts[pts.length - 1].seq;
+		const clicksSince = getRecentClicks(lastClickSeq);
+		if (clicksSince.length > 0) {
+			for (const c of clicksSince) {
+				clicks.push(c);
+			}
+			lastClickSeq = clicksSince[clicksSince.length - 1].seq;
+		}
+		const scrollsSince = getRecentScrolls(lastScrollSeq);
+		if (scrollsSince.length > 0) {
+			for (const s of scrollsSince) {
+				scrolls.push(s);
+			}
+			lastScrollSeq = scrollsSince[scrollsSince.length - 1].seq;
+		}
 	}
 
 	function onSnapshotTick(): void {
 		durationMs = Date.now() - startedAtMs;
-		snapshots.push({ t: Date.now(), score: getVerdict().score, features: getMouseFeatures() });
+		snapshots.push({
+			t: Date.now(),
+			score: getVerdict().score,
+			features: getMouseFeatures(),
+			signalScores: getSignalScores()
+		});
 	}
 
 	function startRecording(recLabel: RecLabel): void {
@@ -93,11 +139,19 @@
 		endedAtMs = startedAtMs;
 		durationMs = 0;
 		samples = [];
+		clicks = [];
+		scrolls = [];
 		snapshots = [];
 		lastSeq = 0;
-		// Solo muestras nuevas: saltamos lo que ya existía en el buffer.
+		lastClickSeq = 0;
+		lastScrollSeq = 0;
+		// Solo muestras nuevas: saltamos lo que ya existía en cada buffer.
 		const existing = getRecentPoints(0);
 		if (existing.length > 0) lastSeq = existing[existing.length - 1].seq;
+		const existingClicks = getRecentClicks(0);
+		if (existingClicks.length > 0) lastClickSeq = existingClicks[existingClicks.length - 1].seq;
+		const existingScrolls = getRecentScrolls(0);
+		if (existingScrolls.length > 0) lastScrollSeq = existingScrolls[existingScrolls.length - 1].seq;
 		sampleTimer = setInterval(onSamplesTick, 100);
 		snapshotTimer = setInterval(onSnapshotTick, 250);
 	}
@@ -126,6 +180,8 @@
 			durationMs: endedAtMs - startedAtMs,
 			sampleCount: samples.length,
 			samples,
+			clicks,
+			scrolls,
 			snapshots
 		};
 		const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });

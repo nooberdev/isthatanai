@@ -10,7 +10,6 @@ El sitio público se actualiza copiando `apps/demo/build/` al repo público
 `nooberdev/is-that-an-ai` (solo artefactos, sin fuentes). Pages con plan Free no
 permite publicar desde un repo privado, por eso ese repo intermedio existe.
 
-
 Librería de JavaScript **plug and play** que corre 100 % en el navegador (sin backend) y
 detecta en tiempo real si quien controla la página es una persona o un agente de IA,
 analizando el comportamiento del mouse, teclado, clicks, scroll, táctil y atención.

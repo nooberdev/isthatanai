@@ -193,6 +193,8 @@ describe("IsThatAnAI (Etapa 3)", () => {
       bufferFill: 0,
       trustedRatio: 0,
       lastEventAt: 0,
+      clickCount: 0,
+      scrollCount: 0,
     });
   });
 
@@ -208,7 +210,8 @@ describe("IsThatAnAI (Etapa 3)", () => {
       const detector = new IsThatAnAI({ mouse: { bufferSize: 4, maxAgeMs: 15000 } });
       detector.start();
       detector.start();
-      expect(added).toBe(3);
+      // 3 de mouse + 2 de click (down/up) + 2 de scroll (wheel + scroll).
+      expect(added).toBe(7);
 
       target.dispatchEvent(move(1, 10));
       target.dispatchEvent(move(2, 20));

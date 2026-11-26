@@ -1,4 +1,6 @@
+import { type ClickCollector, createClickCollector } from "../collectors/click";
 import { createMouseCollector, type MouseCollector } from "../collectors/mouse";
+import { createScrollCollector, type ScrollCollector } from "../collectors/scroll";
 import { extractMouseFeatures, type MouseFeatures } from "../features/mouse";
 import {
   AI_CONFIRM_MS,
@@ -9,9 +11,12 @@ import {
   ScoreComputer,
 } from "../scoring/score";
 import type {
+  ClickSample,
   CollectorStats,
   DetectorOptions,
   PointerSample,
+  ScrollSample,
+  SignalScores,
   Verdict,
   VerdictCallback,
 } from "../types";
@@ -48,6 +53,8 @@ export class IsThatAnAI {
   private readonly scoreComputer = new ScoreComputer();
   private features: MouseFeatures | null = null;
   private collector: MouseCollector | null = null;
+  private clickCollector: ClickCollector | null = null;
+  private scrollCollector: ScrollCollector | null = null;
   private started = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   private verdict: Verdict = MEASURING;
@@ -68,12 +75,30 @@ export class IsThatAnAI {
 
   start(): void {
     if (this.started) return;
-    if (!this.collector) {
+    if (!this.collector || !this.clickCollector || !this.scrollCollector) {
       // `window` se consulta aquí, nunca en el constructor ni al importar.
       const target: EventTarget = typeof window !== "undefined" ? window : new EventTarget();
-      this.collector = createMouseCollector({ target, now: this.now, buffer: this.buffer });
+      if (!this.collector) {
+        this.collector = createMouseCollector({ target, now: this.now, buffer: this.buffer });
+      }
+      if (!this.clickCollector) {
+        this.clickCollector = createClickCollector({
+          target,
+          now: this.now,
+          bufferSize: this.options.click?.bufferSize,
+        });
+      }
+      if (!this.scrollCollector) {
+        this.scrollCollector = createScrollCollector({
+          target,
+          now: this.now,
+          bufferSize: this.options.scroll?.bufferSize,
+        });
+      }
     }
     this.collector.attach();
+    this.clickCollector.attach();
+    this.scrollCollector.attach();
     this.started = true;
     if (this.timer === null) {
       this.timer = setInterval(() => this.evaluate(), EVALUATION_INTERVAL_MS);
@@ -87,6 +112,12 @@ export class IsThatAnAI {
     }
     this.collector?.detach();
     this.collector = null;
+    this.clickCollector?.detach();
+    this.clickCollector?.clear();
+    this.clickCollector = null;
+    this.scrollCollector?.detach();
+    this.scrollCollector?.clear();
+    this.scrollCollector = null;
     this.started = false;
     this.scoreComputer.reset();
     this.features = null;
@@ -103,13 +134,27 @@ export class IsThatAnAI {
    */
   evaluate(): void {
     if (!this.collector) return;
-    this.buffer.discardOldestBefore(this.now() - this.maxAgeMs);
+    const cutoff = this.now() - this.maxAgeMs;
+    this.buffer.discardOldestBefore(cutoff);
+    this.clickCollector?.discardOldestBefore(cutoff);
+    this.scrollCollector?.discardOldestBefore(cutoff);
+
     const samples = this.buffer.snapshot();
-    if (samples.length === 0) return;
-    const windowMs = samples[samples.length - 1].t - samples[0].t;
-    const evidence = this.scoreComputer.evaluate(samples, windowMs);
+    const clicks = this.clickCollector?.getSamples() ?? [];
+    const scrolls = this.scrollCollector?.getSamples() ?? [];
+    if (samples.length === 0 && clicks.length === 0 && scrolls.length === 0) return;
+
+    // La ventana de mouse se mantiene igual; las ventanas de click/scroll se
+    // derivan de sus propias muestras dentro del ScoreComputer.
+    const windowMs = samples.length >= 2 ? samples[samples.length - 1].t - samples[0].t : 0;
+    const evidence = this.scoreComputer.evaluate(samples, windowMs, clicks, scrolls);
     this.features = evidence.score === null ? null : extractMouseFeatures(samples);
-    const state = this.classify(evidence.score, samples[samples.length - 1].t);
+    const latestT = Math.max(
+      samples.length > 0 ? samples[samples.length - 1].t : 0,
+      clicks.length > 0 ? clicks[clicks.length - 1].t : 0,
+      scrolls.length > 0 ? scrolls[scrolls.length - 1].t : 0,
+    );
+    const state = this.classify(evidence.score, latestT);
     // score null solo cuando no hay evidencia suficiente; con evidencia se
     // conserva el score real y se recalcula la duda en cada evaluación.
     this.verdict =
@@ -215,6 +260,21 @@ export class IsThatAnAI {
     return this.buffer.snapshotSince(sinceSeq);
   }
 
+  getRecentClicks(sinceSeq = 0): ClickSample[] {
+    this.clickCollector?.discardOldestBefore(this.now() - this.maxAgeMs);
+    return (this.clickCollector?.getSamples() ?? []).filter((sample) => sample.seq > sinceSeq);
+  }
+
+  getRecentScrolls(sinceSeq = 0): ScrollSample[] {
+    this.scrollCollector?.discardOldestBefore(this.now() - this.maxAgeMs);
+    return (this.scrollCollector?.getSamples() ?? []).filter((sample) => sample.seq > sinceSeq);
+  }
+
+  /** Último score por señal (null si esa señal no tenía evidencia suficiente). */
+  getSignalScores(): SignalScores {
+    return this.scoreComputer.getSignalScores();
+  }
+
   getStats(): CollectorStats {
     const sampleCount = this.buffer.size;
     const trusted = this.buffer.trustedCount();
@@ -226,6 +286,8 @@ export class IsThatAnAI {
         sampleCount === 0 ? 0 : Math.min(1, Math.max(0, sampleCount / this.buffer.capacity)),
       trustedRatio: sampleCount === 0 ? 0 : trusted / sampleCount,
       lastEventAt: this.collector?.lastEventAt ?? 0,
+      clickCount: this.clickCollector?.buffer.size ?? 0,
+      scrollCount: this.scrollCollector?.buffer.size ?? 0,
     };
   }
 }

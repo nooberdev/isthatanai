@@ -1,6 +1,13 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { IsThatAnAI, type MouseFeatures, type PointerSample, type Verdict } from "is-that-an-ai";
+	import {
+		IsThatAnAI,
+		type ClickSample,
+		type MouseFeatures,
+		type PointerSample,
+		type ScrollSample,
+		type Verdict
+	} from "is-that-an-ai";
 	import CentralWord from "#lib/components/CentralWord.svelte";
 	import TrailCanvas from "#lib/components/TrailCanvas.svelte";
 	import CustomCursor from "#lib/components/CustomCursor.svelte";
@@ -19,6 +26,15 @@
 	import type { VerdictState } from "#lib/motion/verdict.svelte";
 	import { getCursorPos, setCursorPos } from "#lib/motion/cursor";
 	import { setupSectionReveal } from "#lib/motion/reveal";
+
+	// Forma estructural de las señales que expone la librería (una por señal,
+	// null cuando no hay evidencia). Se declara aquí para no depender de un tipo
+	// con nombre y mantener el acoplamiento solo a la forma del valor.
+	interface SignalScores {
+		mouse: number | null;
+		click: number | null;
+		scroll: number | null;
+	}
 
 	const STATE_COLOR: Record<VerdictState, string> = {
 		midiendo: "var(--color-verdict-midiendo)",
@@ -140,7 +156,9 @@
 			eventsPerSecond: s?.eventsPerSecond ?? 0,
 			bufferFill: s?.bufferFill ?? 0,
 			trustedRatio: s?.trustedRatio ?? 0,
-			lastEventAt: s?.lastEventAt ?? 0
+			lastEventAt: s?.lastEventAt ?? 0,
+			clickCount: s?.clickCount ?? 0,
+			scrollCount: s?.scrollCount ?? 0
 		};
 	}
 
@@ -155,6 +173,18 @@
 
 	function readRecentPoints(sinceSeq?: number): PointerSample[] {
 		return detector ? detector.getRecentPoints(sinceSeq) : [];
+	}
+
+	function readSignalScores(): SignalScores {
+		return detector?.getSignalScores() ?? { mouse: null, click: null, scroll: null };
+	}
+
+	function readRecentClicks(sinceSeq?: number): ClickSample[] {
+		return detector ? detector.getRecentClicks(sinceSeq) : [];
+	}
+
+	function readRecentScrolls(sinceSeq?: number): ScrollSample[] {
+		return detector ? detector.getRecentScrolls(sinceSeq) : [];
 	}
 
 	// En interacción normal manda el número real; en estados forzados se mantienen
@@ -313,6 +343,9 @@
 		getVerdict={readVerdict}
 		getMouseFeatures={readMouseFeatures}
 		getRecentPoints={readRecentPoints}
+		getSignalScores={readSignalScores}
+		getRecentClicks={readRecentClicks}
+		getRecentScrolls={readRecentScrolls}
 		forced={urlOverride !== null || manualOverride !== null}
 	/>
 {/if}

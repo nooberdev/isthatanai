@@ -16,7 +16,12 @@ export default defineConfig({
       // SvelteKit 3 lee la configuración del plugin, no de svelte.config.js.
       adapter: adapter(),
       paths: {
-        base: process.env.BASE_PATH ?? "",
+        // Vite corre en Node; se lee sin depender de @types/node.
+        base: ((
+          globalThis as unknown as {
+            process?: { env?: Record<string, string | undefined> };
+          }
+        ).process?.env?.BASE_PATH ?? "") as "" | `/${string}`,
       },
     }),
   ],

@@ -1,7 +1,21 @@
 <script lang="ts">
-	import type { CollectorStats, MouseFeatures, PointerSample, Verdict } from "is-that-an-ai";
+	import type {
+		ClickSample,
+		CollectorStats,
+		MouseFeatures,
+		PointerSample,
+		ScrollSample,
+		Verdict
+	} from "is-that-an-ai";
 	import type { VerdictState } from "#lib/motion/verdict.svelte";
 	import CalibrationPanel from "#lib/components/CalibrationPanel.svelte";
+
+	// Forma estructural de las señales (una por señal, null sin evidencia).
+	interface SignalScores {
+		mouse: number | null;
+		click: number | null;
+		scroll: number | null;
+	}
 
 	let {
 		currentState,
@@ -10,6 +24,9 @@
 		getVerdict,
 		getMouseFeatures,
 		getRecentPoints,
+		getSignalScores,
+		getRecentClicks,
+		getRecentScrolls,
 		forced = false
 	}: {
 		currentState: VerdictState;
@@ -18,12 +35,16 @@
 		getVerdict: () => Verdict;
 		getMouseFeatures: () => MouseFeatures | null;
 		getRecentPoints: (sinceSeq?: number) => PointerSample[];
+		getSignalScores: () => SignalScores;
+		getRecentClicks: (sinceSeq?: number) => ClickSample[];
+		getRecentScrolls: (sinceSeq?: number) => ScrollSample[];
 		forced?: boolean;
 	} = $props();
 
 	let open = $state(false);
 	let stats = $state<CollectorStats | null>(null);
 	let verdict = $state<Verdict | null>(null);
+	let signalScores = $state<SignalScores | null>(null);
 
 	function setState(s: VerdictState): void {
 		onSetState(s);
@@ -75,6 +96,7 @@
 		const refresh = () => {
 			stats = getStats();
 			verdict = getVerdict();
+			signalScores = getSignalScores();
 		};
 		refresh();
 		const id = setInterval(refresh, 250);
@@ -92,6 +114,14 @@
 					<div class="dev-panel__row">
 						<dt>Muestras</dt>
 						<dd>{stats?.sampleCount ?? 0}</dd>
+					</div>
+					<div class="dev-panel__row">
+						<dt>Clics</dt>
+						<dd>{stats?.clickCount ?? 0}</dd>
+					</div>
+					<div class="dev-panel__row">
+						<dt>Scroll</dt>
+						<dd>{stats?.scrollCount ?? 0}</dd>
 					</div>
 					<div class="dev-panel__row">
 						<dt>Eventos/s</dt>
@@ -137,12 +167,32 @@
 				{#if forced}
 					<p class="dev-panel__forced">estado forzado por demo</p>
 				{/if}
+				<div class="dev-panel__signals">
+					<p class="dev-panel__title">Señales</p>
+					<dl class="dev-panel__stats">
+						<div class="dev-panel__row">
+							<dt>Mouse</dt>
+							<dd>{signalScores && signalScores.mouse !== null ? signalScores.mouse.toFixed(2) : "—"}</dd>
+						</div>
+						<div class="dev-panel__row">
+							<dt>Clic</dt>
+							<dd>{signalScores && signalScores.click !== null ? signalScores.click.toFixed(2) : "—"}</dd>
+						</div>
+						<div class="dev-panel__row">
+							<dt>Scroll</dt>
+							<dd>{signalScores && signalScores.scroll !== null ? signalScores.scroll.toFixed(2) : "—"}</dd>
+						</div>
+					</dl>
+				</div>
 			</div>
 			<CalibrationPanel
-			getMouseFeatures={getMouseFeatures}
-			getRecentPoints={getRecentPoints}
-			getVerdict={getVerdict}
-		/>
+				getMouseFeatures={getMouseFeatures}
+				getRecentPoints={getRecentPoints}
+				getVerdict={getVerdict}
+				getSignalScores={getSignalScores}
+				getRecentClicks={getRecentClicks}
+				getRecentScrolls={getRecentScrolls}
+			/>
 		<div class="dev-panel__actions">
 				<button type="button" class="dev-panel__btn" onclick={() => setState("midiendo")}>midiendo</button>
 				<button type="button" class="dev-panel__btn" onclick={() => setState("humano")}>humano</button>
@@ -225,6 +275,13 @@
 		margin: 0;
 		font-size: 0.75rem;
 		color: var(--muted-foreground);
+	}
+
+	.dev-panel__signals {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		margin-top: 0.35rem;
 	}
 
 	.dev-panel__actions {
