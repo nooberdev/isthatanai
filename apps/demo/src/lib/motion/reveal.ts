@@ -1,25 +1,26 @@
 /**
- * Configura el comportamiento de entrada de las secciones (una sola estrategia de
- * entrada en toda la web): su título entra una vez con una máscara de clip-path
- * (inset) y el resto de la sección aparece con un fundado corto.
- * IntersectionObserver es la alternativa automática cuando el navegador no
- * soporta `animation-timeline: scroll()`.
+ * Entrada de las secciones: la propia sección es la carta (superficie, borde,
+ * radio y sombra en layout.css) y se activa con `.is-visible` cuando entra en
+ * el viewport. El IntersectionObserver observa la SECCIÓN y no sus hijos: el
+ * título ya no lleva clip-path, pero observar el bloque completo evita
+ * depender de la geometría de recortes internos. No se toca el DOM: título y
+ * cuerpo siguen siendo hijos directos de `.section`.
  */
 export function setupSectionReveal(): () => void {
   if (typeof document === "undefined") return () => {};
 
-  const titles = Array.from(document.querySelectorAll<HTMLElement>(".section-title"));
+  const sections = Array.from(document.querySelectorAll<HTMLElement>(".section"));
   const observer = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
         if (!entry.isIntersecting) continue;
-        entry.target.closest(".section")?.classList.add("is-visible");
+        entry.target.classList.add("is-visible");
         observer.unobserve(entry.target);
       }
     },
     { threshold: 0.2 },
   );
 
-  for (const title of titles) observer.observe(title);
+  for (const section of sections) observer.observe(section);
   return () => observer.disconnect();
 }

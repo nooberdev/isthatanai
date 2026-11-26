@@ -43,6 +43,7 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --dur-180: 180ms;
+  --dur-220: 220ms;
   --dur-320: 320ms;
   --dur-600: 600ms;
   --dur-900: 900ms;
@@ -151,6 +152,49 @@
 html.has-custom-cursor,
 html.has-custom-cursor * {
   cursor: none !important;
+}
+
+/* ---- Scroll: el documento es el contenedor de snap ------------------------
+   Parada obligatoria: cada sección es un punto de snap y el gesto no puede
+   saltarse ninguna. El hero sigue siendo sticky a 100dvh; la hoja de
+   secciones se desliza por encima. La reserva de gutter evita salto de layout
+   cuando aparece la scrollbar.                                             */
+html {
+  scroll-snap-type: y mandatory;
+  scrollbar-gutter: stable;
+  caret-color: var(--foreground);
+}
+
+/* Scrollbar propia: pista neutra, thumb del foreground con color-mix.
+   Firefox (scrollbar-width / scrollbar-color) y WebKit (pseudoelementos). */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--foreground) 32%, transparent)
+    color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--foreground) 16%, var(--background));
+  color: var(--foreground);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--foreground) 32%, transparent);
+  border-radius: 9999px;
+  transition: background-color var(--dur-180) var(--ease-out);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--foreground) 52%, transparent);
 }
 
 /* ---- Movimiento: pantalla principal (hero) ---- */
@@ -274,68 +318,84 @@ html.has-custom-cursor * {
   background: var(--background);
 }
 
-.sheet-intro {
-  max-width: 62ch;
-  margin: 0 auto;
-  padding: 6rem 1.25rem 2rem;
-}
-
-.sheet-intro-title {
-  margin: 0;
-  font-size: 1.75rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.sheet-intro-line {
-  margin: 0.5rem 0 0;
-  color: var(--muted-foreground);
-  font-size: 0.9375rem;
-}
-
-/* ---- Secciones: un solo tipo de entrada ---- */
+/* ---- Secciones: la página ES la carta -----------------------------------
+   Cada sección ocupa el viewport y es un punto de snap obligatorio: el gesto
+   se detiene en ella y no puede saltarse. No hay wrapper: la propia sección
+   tiene superficie, borde, radio y sombra, y entra como una carta al activarse
+   .is-visible. El hero sticky y su contenido no se tocan: la primera sección
+   sigue empezando justo después.                                           */
 .section {
-  max-width: 62ch;
-  margin: 0 auto;
-  padding: 6rem 1.25rem 4rem;
-  border-top: 1px solid var(--border);
+  --section-measure: 39rem; /* ≈ 65ch @ 16px: measure común, no depende del font-size */
+  box-sizing: border-box;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(2.5rem, 6vh, 4rem) clamp(1.25rem, 5vw, 3rem);
+  /* La carta es la sección: superficie de un segundo tono, borde de 1px,
+     radio y sombra suave con offset y blur —sin halo de color ni 4px 4px 0—. */
+  background: color-mix(in srgb, var(--card) 92%, var(--secondary));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 12px 30px -18px color-mix(in srgb, var(--foreground) 20%, transparent),
+    0 2px 8px -4px color-mix(in srgb, var(--foreground) 12%, transparent);
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  /* Entrada única de la carta: se levanta y se coloca en una sola dirección;
+     el snap aporta el resto del movimiento. Dentro no anima nada por separado. */
+  opacity: 0;
+  transform: translateY(18px) scale(0.985);
+  transition:
+    opacity var(--dur-220) var(--ease-out),
+    transform var(--dur-220) var(--ease-out);
+}
+
+.section.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+@supports (padding: env(safe-area-inset-top)) {
+  .section {
+    padding-top: max(clamp(2.5rem, 6vh, 4rem), env(safe-area-inset-top));
+    padding-bottom: max(clamp(2.5rem, 6vh, 4rem), env(safe-area-inset-bottom));
+  }
+}
+
+/* Título y cuerpo comparten measure y caja: llegan con la carta, sin clip-path
+   ni fundido propios que compitan con la entrada de la sección. */
+.section-title,
+.section-body {
+  width: min(var(--section-measure), 100%);
+  max-width: 100%;
 }
 
 .section-title {
-  margin: 0 0 1rem;
-  font-size: 28px;
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+  font-size: clamp(1.75rem, 1.4rem + 1.5vw, 2.25rem);
   font-weight: 600;
-  letter-spacing: -0.01em;
-  clip-path: inset(100% 0 0 0);
-  transition: clip-path var(--dur-320) var(--ease-in-out);
-}
-
-.section-index {
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-}
-
-/* Entrada de título UNA vez con la máscara. */
-.section.is-visible .section-title {
-  clip-path: inset(0 0 0 0);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
 }
 
 .section-body {
-  margin: 0;
-  font-size: 0.9375rem;
-  line-height: 1.7;
+  margin-top: 0;
+  margin-bottom: 0;
+  font-size: clamp(0.9375rem, 0.9rem + 0.15vw, 1rem);
+  line-height: 1.65;
   color: var(--muted-foreground);
-  opacity: 0;
-  transition: opacity var(--dur-320) var(--ease-in-out);
-  max-width: 62ch;
+  overflow-wrap: break-word;
 }
 
-.section.is-visible .section-body {
-  opacity: 1;
-}
-
-/* ---- prefers-reduced-motion: cambio instantáneo o fundido corto de opacidad ---- */
+/* ---- prefers-reduced-motion: sin animación y sin snap suave --------------- */
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-snap-type: none;
+  }
   .verdict-layer--base,
   .verdict-layer--reveal {
     /* Criterio: sin movimiento; el matiz de duda cambia al instante, sin fundido
@@ -346,10 +406,10 @@ html.has-custom-cursor * {
     animation: none;
     clip-path: circle(150vmax at var(--rx) var(--ry));
   }
-  .section-title {
+  /* La carta ya está colocada, sin transformaciones: aparece al instante. */
+  .section {
+    opacity: 1;
+    transform: none;
     transition: none;
-  }
-  .section.is-visible .section-title {
-    clip-path: inset(0 0 0 0);
   }
 }
