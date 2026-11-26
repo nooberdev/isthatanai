@@ -1,0 +1,19 @@
+{
+  "name": "is-that-an-ai-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "bun run --filter=demo dev",
+    "build": "bun run --filter=is-that-an-ai build",
+    "test": "bun test",
+    "typecheck": "bun run --filter=is-that-an-ai typecheck && bun run --filter=demo typecheck",
+    "lint": "biome check ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.9",
+    "typescript": "^5.9.3"
+  }
+}

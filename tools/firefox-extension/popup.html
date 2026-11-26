@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>is that an ai? — calibración</title>
+    <style>
+      body {
+        width: 250px;
+        margin: 0;
+        padding: 14px;
+        font: 13px/1.4 system-ui, sans-serif;
+        color: #16181d;
+        background: #f7f7f8;
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 14px;
+      }
+      .row {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+      button {
+        flex: 1;
+        padding: 7px 8px;
+        border: 1px solid #c8c9ce;
+        border-radius: 6px;
+        background: #fff;
+        cursor: pointer;
+      }
+      button:hover { background: #eceef2; }
+      button.primary { background: #16181d; color: #fff; border-color: #16181d; }
+      #status {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #dcdde1;
+        color: #55585f;
+      }
+      small { color: #7a7d84; }
+    </style>
+  </head>
+  <body>
+    <h1>is that an ai? — calibración</h1>
+    <div class="row">
+      <button id="human" class="primary" type="button">Grabar humano</button>
+      <button id="bot" type="button">Grabar bot</button>
+    </div>
+    <div class="row">
+      <button id="stop" type="button">Detener</button>
+      <button id="export" type="button">Exportar JSON</button>
+    </div>
+    <div id="status">Cargando…</div>
+    <small>Solo números, en memoria. Nada de red ni almacenamiento.</small>
+    <script src="popup.js"></script>
+  </body>
+</html>

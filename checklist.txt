@@ -1,0 +1,227 @@
+🖱️ MOUSE: trayectoria (la forma del camino)
+Rectitud: ¿el cursor va en línea recta perfecta? Los humanos casi nunca.
+Curvatura: cuánto se curva el camino y si lo hace de forma natural.
+Cambios de dirección: cuántas veces gira el cursor en un trayecto.
+Suavidad del giro: los humanos giran en curva, los bots en esquinas duras.
+Teletransporte: el cursor aparece en otro lado sin pasar por el camino.
+Saltos grandes: distancia entre dos eventos seguidos demasiado grande.
+Eficiencia del camino: distancia recorrida contra distancia directa.
+Zigzag: movimientos laterales raros sin sentido.
+Simetría: si el camino de ida es calcado al de vuelta (los humanos no repiten igual).
+Repetición exacta: el mismo trayecto idéntico dos veces (señal fuerte de bot o grabación).
+Curvas matemáticas perfectas: detecta si el camino parece una curva Bézier "de manual".
+Direcciones favoritas: los humanos tienen ángulos cómodos según la mano.
+Origen del movimiento: ¿empezó desde donde estaba el cursor o apareció de la nada?
+Entradas por el borde: el cursor aparece desde afuera de la ventana de forma natural o de golpe.
+Deriva: movimientos pequeños sin objetivo mientras "piensa".
+⚡ MOUSE: velocidad y aceleración
+Velocidad promedio.
+Velocidad máxima.
+Perfil de campana: los humanos aceleran, llegan a un máximo y frenan suave.
+Aceleración inicial: qué tan natural arranca.
+Frenado final: los humanos desaceleran al acercarse al objetivo.
+Velocidad constante: señal de bot si no cambia nunca.
+Cambios bruscos de velocidad (jerk): qué tan "tirones" son.
+Variación de velocidad entre movimientos.
+Velocidad según distancia: lejos = más rápido, cerca = más lento.
+Velocidad imposible: más rápida de lo que una mano puede.
+Pausas durante el trayecto: micro-paradas naturales.
+Tiempo parado antes de moverse.
+Ritmo de los eventos: ¿llegan a intervalos demasiado regulares?
+Resolución de tiempo: los eventos de un humano real tienen cierta irregularidad.
+🤏 MOUSE: temblor y detalles finos
+Micro-temblor de la mano.
+Ruido en los píxeles: pequeñas desviaciones que un bot no pone.
+Movimientos subpíxel (decimales raros en las coordenadas).
+Tipo de dispositivo: mouse, trackpad o pantalla, que se mueven distinto.
+Pasos enteros: muchos bots mueven en pasos de números redondos.
+Estabilidad del cursor quieto: un humano nunca está 100% inmóvil.
+Deriva al soltar el mouse.
+🎯 MOUSE: puntería
+Ley de Fitts: objetivos más lejanos y pequeños tardan más.
+Sobrepaso (overshoot): pasarse del botón y volver.
+Corrección fina: ajustes pequeños al llegar.
+Tiempo de apuntar.
+Tiempo entre llegar al botón y clickear.
+Precisión del click: ¿exactamente en el centro? Sospechoso.
+Distribución de dónde clickea: los humanos caen dispersos dentro del botón.
+Fallos de puntería (clickear al lado) y corregir.
+Ruta hacia el objetivo: ¿fue directo sin dudar a algo que acaba de aparecer?
+Anticipación: moverse hacia el botón antes de que aparezca (imposible para humano).
+Hover antes de clickear: pasar por encima antes.
+Hover sobre cosas irrelevantes: curiosidad natural.
+👆 CLICKS
+Duración del click (presionar → soltar).
+Click instantáneo (0 ms).
+Movimiento durante el click.
+Posición al presionar vs. al soltar.
+Ritmo del doble click.
+Clicks repetidos: intervalos demasiado parejos.
+Click sin movimiento previo.
+Tiempo desde que carga la página hasta el primer click.
+Click derecho, medio y arrastres.
+Arrastrar y soltar: trayectoria natural.
+Selección de texto: cómo arrastra para seleccionar.
+Click en zonas no clickeables.
+Orden de los clicks: ¿recorre la página como humano o como lista de tareas?
+Velocidad de clicks seguidos.
+Ráfagas de clicks.
+⌨️ TECLADO: ritmo
+Tiempo entre teclas.
+Distribución de ese tiempo: en humanos tiene una forma característica (muchos rápidos, algunos lentos).
+Metrónomo: intervalos casi idénticos = bot.
+Tiempo que mantiene cada tecla apretada.
+Solapamiento de teclas: los humanos a veces aprietan la siguiente antes de soltar la anterior.
+Pares de letras: algunas combinaciones son más rápidas según la mano.
+Cambio de mano entre letras (más rápido).
+Misma tecla repetida.
+Velocidad de escritura promedio.
+Velocidad imposible: más teclas por segundo de las que un dedo puede.
+Aceleración al calentar: los humanos se sueltan al escribir.
+Ráfagas y pausas: escribir un rato y parar a pensar.
+Pausa antes de la primera tecla.
+Pausa después de un error.
+Pausas entre palabras.
+Pausas al final de frase.
+Ritmo según cantidad de texto.
+✍️ TECLADO: comportamiento
+Uso de backspace.
+Errores y correcciones: los humanos se equivocan, los bots casi nunca.
+Cero errores en texto largo.
+Selección y borrado.
+Uso de flechas para moverse en el texto.
+Atajos de teclado (copiar, pegar, deshacer).
+Pegar texto de golpe: distingue pegar de teclear.
+Texto que aparece sin teclas.
+Autocompletado de navegador o gestor de contraseñas (se detecta para no dar falso positivo).
+Tab para cambiar de campo.
+Enter para enviar.
+Teclas modificadoras (Shift, Ctrl) de forma natural.
+Mayúsculas: cómo las escribe.
+Diferencia entre teclas físicas y las que genera un programa.
+Coherencia entre lo que se teclea y lo que aparece (sin guardar qué letras son).
+📜 SCROLL
+Velocidad del scroll.
+Inercia: los humanos con trackpad tienen "deslizamiento" natural.
+Pasos de la rueda del mouse (son regulares pero con variación humana).
+Saltos exactos a posiciones.
+Scroll hacia arriba y abajo (los humanos vuelven atrás).
+Pausas para leer.
+Scroll proporcional al contenido.
+Scroll sin que se mueva nada más.
+Scroll instantáneo hasta el final.
+📱 TÁCTIL (celular)
+Presión del dedo (si el dispositivo lo da).
+Tamaño del área tocada.
+Inclinación.
+Duración del toque.
+Deslizamiento con inercia.
+Toques con varios dedos.
+Pellizcar y zoom.
+Toque vs. click falso: eventos de mouse simulados en un celular.
+Movimiento del celular (acelerómetro, solo si el usuario lo permite).
+Temblor natural de sostener el celular.
+👀 ATENCIÓN Y PESTAÑA
+Cambios de pestaña.
+Ventana en segundo plano.
+Foco en la página.
+Tiempo activo vs. inactivo.
+Movimiento del cursor al salir y volver a la ventana.
+Cambio de tamaño de ventana.
+Tiempo de lectura antes de actuar: ¿actúa en 50 ms sobre una página con mucho texto?
+Tiempo de reacción: lo que tarda en responder a algo nuevo en pantalla.
+Variación de ese tiempo de reacción.
+Curva de cansancio: los humanos se vuelven más lentos o más irregulares con el rato.
+Pausas largas naturales (levantarse, pensar).
+🧩 COHERENCIA ENTRE SEÑALES (aquí está la magia)
+Mouse + teclado: ¿hay cursor activo mientras escribe?
+Click antes de escribir en un campo (lo normal).
+Mirar antes de actuar: el cursor visita algo antes de usarlo.
+Congruencia de velocidades: si el mouse es humano pero el teclado es de máquina, algo no cuadra.
+Mezcla "sospechosa": una señal muy humana + otras muy robóticas.
+Consistencia en el tiempo: que no cambie de "personalidad" a mitad de sesión.
+Variedad: los humanos son diferentes cada vez; los bots tienden a repetirse.
+Orden natural de acciones.
+Acciones sin ningún evento previo.
+Eventos "fantasma": acciones sin movimiento ni toque que las explique.
+🕵️ SEÑALES DEL ENTORNO (ligeras, y con poco peso)
+Marca de "navegador automatizado" que algunos bots dejan.
+Eventos creados por código (no vienen de una persona real).
+Inconsistencias entre el tipo de dispositivo declarado y el comportamiento.
+Ventana de tamaño raro típico de bots.
+Falta de movimiento en todo el tiempo.
+Falta de eventos que un navegador normal siempre genera.
+Herramientas conocidas de agentes (si dejan rastro visible).
+
+Estas son las más débiles, porque se pueden esconder fácil. Por eso pesan poco. 😬
+
+🧠 MOTOR DE PUNTAJE (el "cerebro")
+Puntaje de 0 a 1 (humano → IA).
+Nivel de confianza (qué tan seguro está).
+Razones legibles: explica por qué decidió.
+Puntaje por señal: mouse, teclado, clicks, etc.
+Pesos configurables por cada señal.
+Combinación inteligente que da más peso a las señales más difíciles de falsificar.
+Ventana deslizante: solo cuenta lo más reciente.
+Memoria corta: el veredicto cambia en tiempo real.
+"Aún no sé": si hay pocos datos, no inventa.
+Mínimo de evidencia antes de dar veredicto.
+Suavizado: que el veredicto no salte de humano a IA por un solo evento raro.
+Detección de cambio de controlador: humano que le pasa el control a un bot, o al revés.
+Protección contra falsos positivos: bajar el puntaje si hay señales de accesibilidad.
+Modo accesibilidad: no castigar a quien usa solo teclado o lector de pantalla.
+Modo sensibilidad: estricto, normal o relajado.
+Perfiles por tipo de dispositivo: compu, laptop, celular, tablet.
+Umbrales configurables para cada web.
+🔌 FUNCIONES DE LA LIBRERÍA (lo que usa quien la instala)
+start() para empezar a escuchar.
+stop() para parar.
+pause() y resume().
+getVerdict() para pedir el veredicto en ese momento.
+onVerdict(callback) para avisar cada vez que cambia.
+onChange() solo cuando cambia de "humano" a "IA" o al revés.
+onThreshold(valor, callback) para avisar cuando pase cierto puntaje.
+getReasons() para ver las razones.
+getScoreBreakdown() para ver el puntaje de cada señal.
+reset() para empezar de cero.
+configure(opciones) para ajustar todo.
+attachTo(elemento) para vigilar solo una parte de la página (ej. un formulario).
+Modo global para toda la página.
+enableSignals() / disableSignals() para activar o desactivar categorías.
+Modo debug con registro bonito en consola.
+Etiqueta <script> (plug and play sin instalar).
+Paquete npm.
+Soporte para React, Vue y Svelte (envoltorios opcionales).
+Eventos personalizados del navegador (document.addEventListener('isthatanai', ...)).
+Inicio automático opcional.
+Versión mínima de ~poquito peso (meta: menos de unas pocas decenas de KB).
+🔒 PRIVACIDAD Y SEGURIDAD
+Cero envío de datos: todo local.
+Nunca guarda qué letras se presionan, solo tiempos.
+No guarda texto escrito.
+Ignora campos de contraseña (ni siquiera mide tiempos ahí, si lo configuras).
+Datos en memoria, no en almacenamiento: se borran al cerrar la página.
+Sin cookies, sin rastreo, sin huella digital.
+Modo "solo agregados": guarda promedios, no eventos crudos.
+Redondeo de datos para que no sirvan de identificador.
+Respeta "No rastrear" y las preferencias de privacidad.
+Aviso opcional de transparencia para la web que la use.
+🛡️ RESISTENCIA A TRAMPAS
+Aleatorizar qué señales pesan más (para que el bot no sepa qué falsificar).
+Chequeos "sorpresa" de consistencia.
+Protección contra alteración del propio código de la librería.
+Detección de eventos inyectados de forma sospechosa.
+Detección de repeticiones de grabaciones (un humano grabado y reproducido).
+Detección de "humanización" falsa: ruido aleatorio demasiado uniforme.
+Chequeo de que el ruido sea del tipo humano, no de números al azar.
+Detección de ritmo generado por fórmula.
+🧪 HERRAMIENTAS PARA TI (laboratorio, sin servidor)
+Modo grabación: graba sesiones locales para estudiarlas.
+Exportar/importar sesiones como datos.
+Panel de demo que muestra el puntaje en vivo.
+Visualizador del camino del mouse.
+Simulador de bot para probar la detección.
+Calibración con datos reales que tú recolectas.
+Pruebas automáticas con agentes reales.
+
+Una verdad honesta 😅: sin backend, todo el código vive en el navegador, así que un bot muy listo puede leer la librería e intentar engañarla. Por eso el veredicto debe verse como una señal más y no como una verdad absoluta; las medidas de la 191 a la 198 ayudan, pero no son magia.

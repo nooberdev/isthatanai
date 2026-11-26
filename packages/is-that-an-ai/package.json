@@ -1,0 +1,31 @@
+{
+  "name": "is-that-an-ai",
+  "version": "0.0.0",
+  "description": "Detección en navegador de humanos vs agentes de IA (esqueleto).",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./iife": "./dist/index.iife.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun run build:esm && bun run build:iife && bun run build:types",
+    "build:esm": "bun build ./src/index.ts --outfile ./dist/index.js --format=esm --target=browser",
+    "build:iife": "bun build ./src/index.ts --outfile ./dist/index.iife.js --format=iife --global-name=IsThatAnAI --minify --target=browser",
+    "build:types": "tsc --emitDeclarationOnly -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

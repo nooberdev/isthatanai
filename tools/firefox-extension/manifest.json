@@ -1,0 +1,23 @@
+{
+  "manifest_version": 2,
+  "name": "is-that-an-ai — calibración",
+  "version": "0.1.0",
+  "description": "Graba movimientos del puntero en páginas web para calibrar el detector. Solo números en memoria; sin red ni almacenamiento.",
+  "permissions": ["<all_urls>", "downloads", "tabs"],
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": true
+  },
+  "browser_action": {
+    "default_title": "is that an ai? — calibración",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}
