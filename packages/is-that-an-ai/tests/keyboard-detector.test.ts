@@ -47,6 +47,28 @@ function dispatchAll(target: EventTarget, events: Event[]): void {
   for (const event of events) target.dispatchEvent(event);
 }
 
+function typeEvents(count: number, interval: number, hold: number): Event[] {
+  const events: Event[] = [];
+  for (let i = 0; i < count; i += 1) {
+    events.push(key("keydown", "KeyA", i * interval));
+    events.push(key("keyup", "KeyA", i * interval + hold));
+  }
+  return events;
+}
+
+function insertEvents(count: number, inputType: "insertText" | "insertFromPaste"): Event[] {
+  return Array.from({ length: count }, (_, i) =>
+    fakeEvent("beforeinput", { inputType, timeStamp: 100 + i * 50 }),
+  );
+}
+
+/** Mueve el reloj de muestras sin aportar evidencia de teclado (un pointermove). */
+function advanceWindow(windowTarget: EventTarget, t: number): void {
+  windowTarget.dispatchEvent(
+    fakeEvent("pointermove", { clientX: 0, clientY: 0, timeStamp: t, pointerType: "mouse" }),
+  );
+}
+
 describe("IsThatAnAI: teclado y texto (Etapa 7)", () => {
   it("start/stop gestionan los colectores y exponen muestras y contadores", () => {
     const { documentTarget, restore } = fakeDom();
@@ -211,5 +233,126 @@ describe("IsThatAnAI: teclado y texto (Etapa 7)", () => {
     expect(result.exitCode).toBe(0);
     const output = new TextDecoder().decode(result.stdout).trim();
     expect(JSON.parse(output)).toEqual({ keys: [], inputs: [], keyboard: null });
+  });
+});
+
+describe("IsThatAnAI: flota de teclado de agente con histeresis", () => {
+  function runBot(
+    documentTarget: EventTarget,
+    windowTarget: EventTarget,
+    events: Event[],
+    advanceT: number,
+  ): IsThatAnAI {
+    const detector = new IsThatAnAI({ now: () => 0 });
+    detector.start();
+    dispatchAll(documentTarget, events);
+    detector.evaluate();
+    // AI_CONFIRM_MS todavía no ha pasado: queda pendiente, sin emitir.
+    expect(detector.getVerdict().state).toBe("measuring");
+    advanceWindow(windowTarget, advanceT);
+    detector.evaluate();
+    expect(detector.getVerdict().state).toBe("ai");
+    return detector;
+  }
+
+  it("type() 40 teclas cada 60ms llega a ai con histeresis (window 2340ms)", () => {
+    const { windowTarget, documentTarget, restore } = fakeDom();
+    try {
+      const detector = runBot(documentTarget, windowTarget, typeEvents(40, 60, 90), 3300);
+      expect(detector.getSignalScores().keyboard).toBeCloseTo(1, 3);
+      expect(detector.getStats().keyCount).toBe(80);
+      detector.stop();
+    } finally {
+      restore();
+    }
+  });
+
+  it("type() 40 teclas cada 16ms llega a ai (window 624ms)", () => {
+    const { windowTarget, documentTarget, restore } = fakeDom();
+    try {
+      const detector = runBot(documentTarget, windowTarget, typeEvents(40, 16, 16), 1400);
+      expect(detector.getSignalScores().keyboard as number).toBeGreaterThan(0.7);
+      detector.stop();
+    } finally {
+      restore();
+    }
+  });
+
+  it("fill() con 6 insertText sin keydown llega a ai", () => {
+    const { windowTarget, documentTarget, restore } = fakeDom();
+    try {
+      const detector = runBot(documentTarget, windowTarget, insertEvents(6, "insertText"), 1200);
+      expect(detector.getStats().inputCount).toBe(6);
+      expect(detector.getSignalScores().keyboard as number).toBeGreaterThan(0.55);
+      detector.stop();
+    } finally {
+      restore();
+    }
+  });
+
+  it("Ctrl+V con 8 insertFromPaste llega a ai", () => {
+    const { windowTarget, documentTarget, restore } = fakeDom();
+    try {
+      const detector = runBot(
+        documentTarget,
+        windowTarget,
+        insertEvents(8, "insertFromPaste"),
+        1200,
+      );
+      expect(detector.getSignalScores().keyboard as number).toBeGreaterThan(0.55);
+      detector.stop();
+    } finally {
+      restore();
+    }
+  });
+
+  it("humano 30 teclas con pausas no dispara ai", () => {
+    const { windowTarget, documentTarget, restore } = fakeDom();
+    try {
+      const detector = new IsThatAnAI({ now: () => 0 });
+      detector.start();
+      const events: Event[] = [];
+      let t = 0;
+      for (let i = 0; i < 30; i += 1) {
+        const dt = 55 + ((i * 41) % 130) + (i % 5 === 3 ? 750 : 0);
+        events.push(key("keydown", "KeyA", t));
+        events.push(key("keyup", "KeyA", t + 45 + ((i * 23) % 90)));
+        t += dt;
+      }
+      dispatchAll(documentTarget, events);
+      detector.evaluate();
+      advanceWindow(windowTarget, t + 400);
+      detector.evaluate();
+      expect(detector.getSignalScores().keyboard as number).toBeLessThan(0.4);
+      expect(detector.getVerdict().state).not.toBe("ai");
+      detector.stop();
+    } finally {
+      restore();
+    }
+  });
+
+  it("agente humanizado con jitter sigue por debajo de 0.4", () => {
+    const { windowTarget, documentTarget, restore } = fakeDom();
+    try {
+      const detector = new IsThatAnAI({ now: () => 0 });
+      detector.start();
+      const events: Event[] = [];
+      let t = 0;
+      for (let i = 0; i < 40; i += 1) {
+        const dt = 60 + ((i * 37) % 90) + (i % 9 === 4 ? 900 : 0);
+        events.push(key("keydown", "KeyA", t));
+        events.push(key("keyup", "KeyA", t + 60 + ((i * 29) % 120)));
+        t += dt;
+      }
+      dispatchAll(documentTarget, events);
+      detector.evaluate();
+      advanceWindow(windowTarget, t + 400);
+      detector.evaluate();
+      expect(detector.getSignalScores().keyboard as number).toBeLessThan(0.4);
+      expect(detector.getVerdict().state).not.toBe("ai");
+      detector.stop();
+    } finally {
+      restore();
+    }
   });
 });

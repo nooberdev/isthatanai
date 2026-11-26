@@ -63,10 +63,31 @@ export const PAUSE_MIN_MS = 800;
 export const NO_PAUSES_MIN_WINDOW_MS = 3000;
 export const NO_PAUSES_MIN_DOWNS = 24;
 
-/** Mínima evidencia: 20 keydowns en >= 3000ms o 5 inputs con pegado. */
+/**
+ * Evidencia mínima para puntuar. Cuatro vías independientes:
+ * - 20 keydowns en >= 3000ms (ritmo humano observado largo);
+ * - 5 inputs con pegado;
+ * - ritmo extremo: >= 12 keydowns con exactRhythm >= 0.6 o
+ *   intervalRegularity >= 0.9, SIN exigir ventana larga. Un bot que no se
+ *   disfraza debe detectarse en pocos segundos (Playwright `type()` a 60ms
+ *   o a 16ms caben aquí con 2400ms / 640ms de muestra).
+ * - texto huérfano: >= 3 inputs con textWithoutKeydown >= 0.6, sean
+ *   `insertText` (`fill()`) o pegado. No guardamos longitud de texto
+ *   (privacidad), así que usamos el NÚMERO de mutaciones como mínimo: coste
+ *   asumido, un `fill()` de una sola mutación puede librarse.
+ * El ritmo humano normal (pausas, jitter) NO abre la vía extrema: con 30
+ * teclas pausadas intervalRegularity ~0 y exactRhythm < 0.6.
+ */
 export const MIN_KEY_DOWNS = 20;
 export const MIN_KEY_WINDOW_MS = 3000;
 export const MIN_INPUTS_WITH_PASTE = 5;
+/** Vía de ritmo extremo: ni ventana ni 20 teclas, pero patrón inhumano. */
+export const EXTREME_RHYTHM_MIN_DOWNS = 12;
+export const EXTREME_EXACT_RHYTHM = 0.6;
+export const EXTREME_INTERVAL_REGULARITY = 0.9;
+/** Vía de texto huérfano: 3 mutaciones, sin leer su contenido/longitud. */
+export const ORPHAN_TEXT_MIN_INPUTS = 3;
+export const ORPHAN_TEXT_RATIO = 0.6;
 
 export interface KeyboardFeatures {
   intervalRegularity: number;
@@ -117,14 +138,28 @@ export function countKeyDowns(keys: KeySample[]): number {
 
 /**
  * Evidencia mínima para puntuar la señal de teclado. Sin ella el score es null
- * y el veredicto siguen mandando las demás señales.
+ * y el veredicto siguen mandando las demás señales. Cuatro vías, documentadas
+ * junto a sus umbrales más arriba: ventana larga, pegado, ritmo extremo y
+ * texto huérfano. Las dos nuevas detectan bots en menos de 3 segundos sin
+ * relajar el ritmo humano normal.
  */
 export function hasKeyboardEvidence(keys: KeySample[], inputs: InputSample[]): boolean {
-  const enoughKeys =
-    countKeyDowns(keys) >= MIN_KEY_DOWNS && keyboardWindowMs(keys) >= MIN_KEY_WINDOW_MS;
+  const downCount = countKeyDowns(keys);
+  const enoughKeys = downCount >= MIN_KEY_DOWNS && keyboardWindowMs(keys) >= MIN_KEY_WINDOW_MS;
+
   const pastes = inputs.filter((sample) => sample.inputType === 1 || sample.inputType === 2).length;
   const enoughPastes = inputs.length >= MIN_INPUTS_WITH_PASTE && pastes > 0;
-  return enoughKeys || enoughPastes;
+
+  const extremeRhythm =
+    downCount >= EXTREME_RHYTHM_MIN_DOWNS &&
+    (keyboardExactRhythm(keys) >= EXTREME_EXACT_RHYTHM ||
+      keyboardIntervalRegularity(keys) >= EXTREME_INTERVAL_REGULARITY);
+
+  const orphanText =
+    inputs.length >= ORPHAN_TEXT_MIN_INPUTS &&
+    keyboardTextWithoutKeydown(keys, inputs) >= ORPHAN_TEXT_RATIO;
+
+  return enoughKeys || enoughPastes || extremeRhythm || orphanText;
 }
 
 /** Ritmo de keydowns casi perfecto (CV <= 0.05) es la única prueba fuerte. */

@@ -2,15 +2,20 @@ import { describe, expect, it } from "bun:test";
 import type { InputSample, KeySample } from "../src/index";
 import {
   computeKeyboardScore,
+  EXTREME_EXACT_RHYTHM,
+  EXTREME_INTERVAL_REGULARITY,
   extractKeyboardFeatures,
   hasKeyboardEvidence,
   KEYBOARD_FEATURE_WEIGHTS,
+  keyboardExactRhythm,
   keyboardHoldRegularity,
   keyboardNoPauses,
   keyboardTextWithoutKeydown,
   keyboardWindowMs,
   MIN_HOLD_MS,
   MIN_KEY_WINDOW_MS,
+  ORPHAN_TEXT_MIN_INPUTS,
+  ORPHAN_TEXT_RATIO,
   ScoreComputer,
 } from "../src/index";
 
@@ -194,5 +199,80 @@ describe("calibración E2E (falso positivo de teclado)", () => {
     const humano = e2eHumanKeys(30);
     expect(extractKeyboardFeatures(bot, []).intervalRegularity).toBeCloseTo(1, 6);
     expect(extractKeyboardFeatures(humano, []).intervalRegularity).toBeLessThan(0.35);
+  });
+});
+
+describe("flota de teclado de agente (evidencia en pocos segundos)", () => {
+  const type60 = keysFrom(Array(40).fill(60), Array(40).fill(90));
+  const type16 = keysFrom(Array(40).fill(16), Array(40).fill(16));
+  const fill6 = Array.from({ length: 6 }, (_, i) => input(i + 1, 100 + i * 50, 0));
+  const fill1 = [input(1, 100, 0)];
+  const paste8 = Array.from({ length: 8 }, (_, i) => input(i + 1, 100 + i * 50, 1));
+  const humanizado = keysFrom(
+    Array.from({ length: 40 }, (_, i) => 60 + ((i * 37) % 90) + (i % 9 === 4 ? 900 : 0)),
+    Array.from({ length: 40 }, (_, i) => 60 + ((i * 29) % 120)),
+  );
+  const humanoPausas = keysFrom(
+    Array.from({ length: 30 }, (_, i) => 55 + ((i * 41) % 130) + (i % 5 === 3 ? 750 : 0)),
+    Array.from({ length: 30 }, (_, i) => 45 + ((i * 23) % 90)),
+  );
+
+  function scoreOf(keys: KeySample[], inputs: InputSample[]): number | null {
+    return new ScoreComputer().evaluate([], 0, [], [], keys, inputs).score;
+  }
+
+  it("type() 40 teclas cada 60ms: evidencia por ritmo extremo aunque la ventana sea corta", () => {
+    expect(keyboardWindowMs(type60)).toBeLessThan(3000);
+    expect(keyboardExactRhythm(type60)).toBeGreaterThanOrEqual(EXTREME_EXACT_RHYTHM);
+    expect(hasKeyboardEvidence(type60, [])).toBe(true);
+    expect(scoreOf(type60, [])).toBeCloseTo(1, 3);
+  });
+
+  it("type() 40 teclas cada 16ms con hold 16ms: evidencia por ritmo extremo", () => {
+    expect(keyboardWindowMs(type16)).toBeLessThan(1000);
+    expect(extractKeyboardFeatures(type16, []).holdRegularity).toBe(0);
+    expect(hasKeyboardEvidence(type16, [])).toBe(true);
+    expect(scoreOf(type16, [])).toBeCloseTo(0.786, 3);
+  });
+
+  it("fill() con 6 insertText sin keydown: evidencia por texto huérfano", () => {
+    expect(ORPHAN_TEXT_MIN_INPUTS).toBe(3);
+    expect(ORPHAN_TEXT_RATIO).toBe(0.6);
+    expect(keyboardTextWithoutKeydown([], fill6)).toBe(1);
+    expect(hasKeyboardEvidence([], fill6)).toBe(true);
+    expect(scoreOf([], fill6)).toBeCloseTo(0.567, 3);
+  });
+
+  it("fill() de una sola mutación no abre evidencia (coste de no guardar longitud)", () => {
+    expect(keyboardTextWithoutKeydown([], fill1)).toBe(1);
+    expect(hasKeyboardEvidence([], fill1)).toBe(false);
+    expect(scoreOf([], fill1)).toBeNull();
+  });
+
+  it("Ctrl+V con 8 insertFromPaste sigue abriendo evidencia por pegado", () => {
+    expect(hasKeyboardEvidence([], paste8)).toBe(true);
+    expect(scoreOf([], paste8)).toBeCloseTo(0.639, 3);
+  });
+
+  it("agente humanizado con jitter puntúa bajo", () => {
+    const features = extractKeyboardFeatures(humanizado, []);
+    expect(features.exactRhythm).toBeLessThan(EXTREME_EXACT_RHYTHM);
+    expect(features.intervalRegularity).toBeLessThan(EXTREME_INTERVAL_REGULARITY);
+    expect(scoreOf(humanizado, []) as number).toBeLessThan(0.4);
+  });
+
+  it("humano 30 con pausas no abre la vía de ritmo extremo", () => {
+    const features = extractKeyboardFeatures(humanoPausas, []);
+    expect(features.intervalRegularity).toBeCloseTo(0, 6);
+    expect(features.exactRhythm).toBeLessThan(EXTREME_EXACT_RHYTHM);
+    // Su evidencia viene solo de la ventana larga, no del patrón extremo.
+    expect(hasKeyboardEvidence(humanoPausas, [])).toBe(true);
+    expect(scoreOf(humanoPausas, []) as number).toBeLessThan(0.4);
+  });
+
+  it("la vía extrema exige al menos 12 keydowns", () => {
+    const shortBot = keysFrom(Array(8).fill(60), Array(8).fill(90));
+    expect(keyboardExactRhythm(shortBot)).toBe(1);
+    expect(hasKeyboardEvidence(shortBot, [])).toBe(false);
   });
 });
