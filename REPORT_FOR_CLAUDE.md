@@ -2,7 +2,7 @@
 
 **Project:** `is-that-an-ai` — a browser-side behavioural detector that classifies
 human vs. agent interaction from timing and movement statistics.
-**Repository:** `https://github.com/nooberdev/is-that-an-ai-web.git` (branch `main`).
+**Repository:** `https://github.com/nooberdev/isthatanai.git` (branch `main`).
 **State at handoff:** code-complete, all 205 checklist items implemented, 851 tests
 passing, English README, in-app documentation page, pushed to remote. Working tree
 clean.
